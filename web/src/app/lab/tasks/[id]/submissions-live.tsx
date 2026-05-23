@@ -293,6 +293,8 @@ function SubmissionCard({
 
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null)
   const [loadingStatus, setLoadingStatus] = useState(false)
+  const [description, setDescription] = useState<string | null>(null)
+  const [loadingDesc, setLoadingDesc] = useState(false)
 
   const fetchStatus = useCallback(async () => {
     if (!tlTaskId) return
@@ -319,6 +321,31 @@ function SubmissionCard({
       setLoadingStatus(false)
     }
   }, [tlTaskId])
+
+  const fetchDescription = useCallback(async (videoId: string) => {
+    setLoadingDesc(true)
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/describe-video`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token ?? ''}`,
+          },
+          body: JSON.stringify({ video_id: videoId }),
+        }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        setDescription(data.description ?? null)
+      }
+    } finally {
+      setLoadingDesc(false)
+    }
+  }, [])
 
   // Auto-fetch when indexing panel opens
   useEffect(() => {
@@ -420,7 +447,7 @@ function SubmissionCard({
                     <span className="text-xs text-[var(--foreground-secondary)]">Not indexed</span>
                   </div>
                 ) : (
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       {loadingStatus && !indexStatus ? (
                         <span className="text-xs text-[var(--foreground-secondary)]">Fetching status…</span>
@@ -430,14 +457,48 @@ function SubmissionCard({
                         </span>
                       ) : null}
                       {indexStatus?.video_id && (
-                        <span className="text-xs text-[var(--foreground-secondary)]">
-                          video: <code className="font-mono text-[0.7rem]">{indexStatus.video_id}</code>
+                        <span className="text-xs text-[var(--foreground-secondary)] font-mono truncate max-w-[160px]">
+                          {indexStatus.video_id}
                         </span>
                       )}
                     </div>
                     <p className="text-xs text-[var(--foreground-secondary)] font-mono truncate">
                       task: {tlTaskId}
                     </p>
+
+                    {/* Describe button — only when ready */}
+                    {indexStatus?.status === 'ready' && indexStatus.video_id && (
+                      <div className="mt-1">
+                        {!description && !loadingDesc && (
+                          <button
+                            onClick={() => fetchDescription(indexStatus.video_id!)}
+                            className="flex items-center gap-1.5 text-xs text-[#aebeff] hover:text-white transition-colors"
+                          >
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                            What did TwelveLabs see in this video?
+                          </button>
+                        )}
+                        {loadingDesc && (
+                          <div className="flex items-center gap-1.5 text-xs text-[var(--foreground-secondary)]">
+                            <span className="h-3 w-3 rounded-full border-2 border-[var(--foreground-secondary)] border-t-transparent animate-spin block" />
+                            Generating description…
+                          </div>
+                        )}
+                        {description && (
+                          <div className="mt-1.5 rounded-md border border-[rgba(59,91,219,0.2)] bg-[rgba(59,91,219,0.06)] p-2.5">
+                            <p className="text-xs leading-relaxed text-[var(--foreground-secondary)]">{description}</p>
+                            <button
+                              onClick={() => { setDescription(null) }}
+                              className="mt-1.5 text-[0.65rem] text-[var(--foreground-secondary)] hover:text-white transition-colors"
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
