@@ -17,7 +17,7 @@ export default async function EarningsPage() {
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-8">Earnings</h1>
 
-      <div className="grid grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
         <div className="bg-white rounded-xl border border-gray-100 p-5">
           <div className="text-3xl font-bold text-gray-900">${total.toFixed(2)}</div>
           <div className="text-sm text-gray-500 mt-1">Total earned</div>

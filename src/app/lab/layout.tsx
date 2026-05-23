@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { signOut } from '@/app/actions/auth'
+import ToastContainer from '@/components/toast'
 
 export default async function LabLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -18,21 +19,22 @@ export default async function LabLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-6">
+      <nav className="bg-white border-b border-gray-100 px-4 sm:px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-4 sm:gap-6">
           <span className="font-bold text-gray-900">DataMarket</span>
           <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">Lab</span>
-          <a href="/lab/dashboard" className="text-sm text-gray-600 hover:text-gray-900">Dashboard</a>
-          <a href="/lab/tasks/new" className="text-sm text-gray-600 hover:text-gray-900">New Task</a>
+          <a href="/lab/dashboard" className="text-sm text-gray-600 hover:text-gray-900 hidden sm:inline">Dashboard</a>
+          <a href="/lab/tasks/new" className="text-sm text-gray-600 hover:text-gray-900 hidden sm:inline">New Task</a>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-500">{profile?.display_name}</span>
+        <div className="flex items-center gap-3 sm:gap-4">
+          <span className="text-sm text-gray-500 hidden sm:inline">{profile?.display_name}</span>
           <form action={signOut}>
             <button className="text-sm text-gray-500 hover:text-gray-900">Sign out</button>
           </form>
         </div>
       </nav>
-      <main className="max-w-5xl mx-auto px-6 py-8">{children}</main>
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">{children}</main>
+      <ToastContainer />
     </div>
   )
 }

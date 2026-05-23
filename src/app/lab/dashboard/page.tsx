@@ -26,7 +26,7 @@ export default async function LabDashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="bg-white rounded-xl border border-gray-100 p-4">
           <div className="text-2xl font-bold">{tasks?.length ?? 0}</div>
           <div className="text-sm text-gray-500 mt-1">Total tasks</div>

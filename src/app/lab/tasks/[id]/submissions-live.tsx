@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { approveSubmission, rejectSubmission } from '@/app/actions/submissions'
+import { triggerToast } from '@/components/toast'
 
 type Submission = {
   id: string
@@ -50,6 +51,7 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
 
           setSubmissions(prev => [newSubmission, ...prev])
           setNewCount(n => n + 1)
+          triggerToast('New submission received!')
         }
       )
       .subscribe()
