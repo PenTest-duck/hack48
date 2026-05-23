@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+from types import MappingProxyType
+from typing import Mapping
 
 from .types import CONTROLLED_KEYS, FilterResult, FreezeReason, RobotTargets
 
 
 @dataclass(frozen=True)
 class SafetyConfig:
-    limits: dict[str, tuple[float, float]]
-    max_delta: dict[str, float]
+    limits: Mapping[str, tuple[float, float]]
+    max_delta: Mapping[str, float]
     smoothing: float
     stale_timeout_ms: int
 
@@ -37,8 +39,15 @@ class SafetyConfig:
             raise ValueError("smoothing must be finite")
         if not 0.0 < self.smoothing <= 1.0:
             raise ValueError("smoothing must be in the interval (0, 1]")
-        if self.stale_timeout_ms <= 0:
-            raise ValueError("stale_timeout_ms must be positive")
+        if (
+            not isinstance(self.stale_timeout_ms, int)
+            or isinstance(self.stale_timeout_ms, bool)
+            or self.stale_timeout_ms <= 0
+        ):
+            raise ValueError("stale_timeout_ms must be a positive integer")
+
+        object.__setattr__(self, "limits", MappingProxyType(dict(self.limits)))
+        object.__setattr__(self, "max_delta", MappingProxyType(dict(self.max_delta)))
 
 
 class TargetFilter:

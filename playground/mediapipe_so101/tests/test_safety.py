@@ -165,8 +165,11 @@ def test_rejects_invalid_smoothing(smoothing: float) -> None:
         make_config(smoothing=smoothing)
 
 
-@pytest.mark.parametrize("stale_timeout_ms", [0, -1])
-def test_rejects_invalid_stale_timeout(stale_timeout_ms: int) -> None:
+@pytest.mark.parametrize(
+    "stale_timeout_ms",
+    [float("inf"), float("nan"), 150.0, True, "150", 0, -1],
+)
+def test_rejects_invalid_stale_timeout(stale_timeout_ms: object) -> None:
     with pytest.raises(ValueError, match="stale_timeout_ms"):
         make_config(stale_timeout_ms=stale_timeout_ms)
 
@@ -320,3 +323,37 @@ def test_non_finite_desired_target_freezes_at_last_safe_target(
     assert result.clamped_keys == ()
     assert result.reason is FreezeReason.TRACKING_LOST
     assert filt.last_targets == RobotTargets(5.0, 5.0, 55.0)
+
+
+def test_safety_config_defensively_copies_input_dicts() -> None:
+    limits = {
+        "wrist_flex.pos": (-20.0, 20.0),
+        "wrist_roll.pos": (-30.0, 30.0),
+        "gripper.pos": (20.0, 80.0),
+    }
+    max_delta = {
+        "wrist_flex.pos": 5.0,
+        "wrist_roll.pos": 10.0,
+        "gripper.pos": 15.0,
+    }
+
+    config = SafetyConfig(
+        limits=limits,
+        max_delta=max_delta,
+        smoothing=1.0,
+        stale_timeout_ms=150,
+    )
+    limits["wrist_flex.pos"] = (-1000.0, 1000.0)
+    max_delta["wrist_flex.pos"] = 1000.0
+
+    assert config.limits["wrist_flex.pos"] == (-20.0, 20.0)
+    assert config.max_delta["wrist_flex.pos"] == 5.0
+
+
+def test_safety_config_mappings_are_immutable() -> None:
+    config = make_config()
+
+    with pytest.raises(TypeError):
+        config.limits["wrist_flex.pos"] = (-1000.0, 1000.0)
+    with pytest.raises(TypeError):
+        config.max_delta["wrist_flex.pos"] = 1000.0
