@@ -16,6 +16,12 @@ type Submission = {
   score?: number
 }
 
+type IndexStatus = {
+  status: 'pending' | 'indexing' | 'ready' | 'failed' | string
+  video_id: string | null
+  created_at: string | null
+}
+
 type Props = {
   taskId: string
   initialSubmissions: Submission[]
@@ -25,6 +31,7 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
   const [submissions, setSubmissions] = useState<Submission[]>(initialSubmissions)
   const [newCount, setNewCount] = useState(0)
   const [isPending, startTransition] = useTransition()
+  const [showIndexing, setShowIndexing] = useState(false)
 
   // Search state
   const [query, setQuery] = useState('')
@@ -150,7 +157,7 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
             type="text"
             value={query}
             onChange={e => handleQueryChange(e.target.value)}
-            placeholder="Search submissions by content… (e.g. "person walking" or "outdoor scene")"
+            placeholder='Search submissions by content… (e.g. "person walking" or "outdoor scene")'
             className="input-dark w-full rounded-lg pl-10 pr-10 py-2.5 text-sm"
           />
           {isSearching && (
@@ -182,11 +189,27 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
           {isFiltered ? 'Search Results' : 'Submissions'}{' '}
           <span className="font-normal text-[var(--foreground-secondary)]">({displayed.length})</span>
         </h2>
-        {!isFiltered && newCount > 0 && (
-          <span className="rounded-full bg-[rgba(47,158,68,0.16)] px-2 py-1 text-xs font-medium text-[#99ddaa]">
-            +{newCount} new this session
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {!isFiltered && newCount > 0 && (
+            <span className="rounded-full bg-[rgba(47,158,68,0.16)] px-2 py-1 text-xs font-medium text-[#99ddaa]">
+              +{newCount} new this session
+            </span>
+          )}
+          {/* Indexing toggle */}
+          <button
+            onClick={() => setShowIndexing(v => !v)}
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+              showIndexing
+                ? 'border-[rgba(59,91,219,0.4)] bg-[rgba(59,91,219,0.12)] text-[#aebeff]'
+                : 'border-[var(--border)] text-[var(--foreground-secondary)] hover:text-white'
+            }`}
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
+            </svg>
+            Indexing
+          </button>
+        </div>
       </div>
 
       {/* Empty states */}
@@ -235,6 +258,7 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
               onApprove={() => handleApprove(submission.id)}
               onReject={() => handleReject(submission.id)}
               isPending={isPending}
+              showIndexing={showIndexing}
             />
           ))}
         </div>
@@ -248,11 +272,13 @@ function SubmissionCard({
   onApprove,
   onReject,
   isPending,
+  showIndexing,
 }: {
   submission: Submission
   onApprove: () => void
   onReject: () => void
   isPending: boolean
+  showIndexing: boolean
 }) {
   const meta = submission.metadata as {
     duration_s?: number
@@ -260,12 +286,58 @@ function SubmissionCard({
     device_model?: string
     gps_lat?: number
     gps_lng?: number
+    twelvelabs_task_id?: string
   } | null
+
+  const tlTaskId = meta?.twelvelabs_task_id ?? null
+
+  const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null)
+  const [loadingStatus, setLoadingStatus] = useState(false)
+
+  const fetchStatus = useCallback(async () => {
+    if (!tlTaskId) return
+    setLoadingStatus(true)
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/task-status`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token ?? ''}`,
+          },
+          body: JSON.stringify({ task_id: tlTaskId }),
+        }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        setIndexStatus(data)
+      }
+    } finally {
+      setLoadingStatus(false)
+    }
+  }, [tlTaskId])
+
+  // Auto-fetch when indexing panel opens
+  useEffect(() => {
+    if (showIndexing && tlTaskId && !indexStatus) {
+      fetchStatus()
+    }
+  }, [showIndexing, tlTaskId, indexStatus, fetchStatus])
 
   const statusStyles = {
     pending: 'bg-[rgba(216,163,71,0.16)] text-[#f0cb7c]',
     approved: 'bg-[rgba(47,158,68,0.16)] text-[#99ddaa]',
     rejected: 'bg-[rgba(210,100,100,0.16)] text-[#f3a8a8]',
+  }
+
+  const indexStatusStyles: Record<string, string> = {
+    ready: 'bg-[rgba(47,158,68,0.16)] text-[#99ddaa]',
+    indexing: 'bg-[rgba(216,163,71,0.16)] text-[#f0cb7c]',
+    pending: 'bg-[rgba(216,163,71,0.16)] text-[#f0cb7c]',
+    failed: 'bg-[rgba(210,100,100,0.16)] text-[#f3a8a8]',
   }
 
   return (
@@ -286,7 +358,7 @@ function SubmissionCard({
 
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusStyles[submission.status]}`}>
                 {submission.status}
@@ -319,6 +391,54 @@ function SubmissionCard({
                   <span className="text-xs text-[var(--foreground-secondary)]">
                     {meta.gps_lat.toFixed(4)}, {meta.gps_lng.toFixed(4)}
                   </span>
+                )}
+              </div>
+            )}
+
+            {/* Indexing panel */}
+            {showIndexing && (
+              <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-xs font-medium text-[var(--foreground-secondary)] uppercase tracking-wide">TwelveLabs Indexing</span>
+                  {tlTaskId && (
+                    <button
+                      onClick={fetchStatus}
+                      disabled={loadingStatus}
+                      className="flex items-center gap-1 text-xs text-[var(--foreground-secondary)] hover:text-white transition-colors disabled:opacity-40"
+                    >
+                      <svg className={`h-3 w-3 ${loadingStatus ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Refresh
+                    </button>
+                  )}
+                </div>
+
+                {!tlTaskId ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--foreground-secondary)]" />
+                    <span className="text-xs text-[var(--foreground-secondary)]">Not indexed</span>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {loadingStatus && !indexStatus ? (
+                        <span className="text-xs text-[var(--foreground-secondary)]">Fetching status…</span>
+                      ) : indexStatus ? (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${indexStatusStyles[indexStatus.status] ?? 'bg-[rgba(255,255,255,0.06)] text-[var(--foreground-secondary)]'}`}>
+                          {indexStatus.status}
+                        </span>
+                      ) : null}
+                      {indexStatus?.video_id && (
+                        <span className="text-xs text-[var(--foreground-secondary)]">
+                          video: <code className="font-mono text-[0.7rem]">{indexStatus.video_id}</code>
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-[var(--foreground-secondary)] font-mono truncate">
+                      task: {tlTaskId}
+                    </p>
+                  </div>
                 )}
               </div>
             )}
