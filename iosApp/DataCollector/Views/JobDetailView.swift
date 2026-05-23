@@ -8,7 +8,7 @@ struct JobDetailView: View {
 
     @Environment(\.modelContext) private var context
     @Query private var recordings: [Recording]
-    @State private var uploadingIDs: Set<UUID> = []
+    @State private var progress: [UUID: Double] = [:]
     @State private var errorMessage: String?
     @State private var pendingDelete: Recording?
     @State private var playing: PlayableVideo?
@@ -105,13 +105,18 @@ struct JobDetailView: View {
             }
             Spacer()
             VStack(spacing: 10) {
-                if rec.status == .local || rec.status == .failed {
-                    if uploadingIDs.contains(rec.id) {
-                        ProgressView()
-                    } else {
-                        Button("Upload") { upload(rec) }
-                            .buttonStyle(.borderedProminent).controlSize(.small)
+                if let p = progress[rec.id] {
+                    VStack(spacing: 4) {
+                        ProgressView(value: p)
+                            .progressViewStyle(.linear)
+                            .frame(width: 90)
+                        Text("\(Int(p * 100))%")
+                            .font(.caption2).monospacedDigit()
+                            .foregroundStyle(.secondary)
                     }
+                } else if rec.status == .local || rec.status == .failed {
+                    Button("Upload") { upload(rec) }
+                        .buttonStyle(.borderedProminent).controlSize(.small)
                 }
                 Button(role: .destructive) { pendingDelete = rec } label: {
                     Image(systemName: "trash")
@@ -153,13 +158,16 @@ struct JobDetailView: View {
             gpsLon: rec.gpsLon,
             gpsAccuracyM: rec.gpsAccuracyM
         )
-        uploadingIDs.insert(rec.id)
+        let id = rec.id
+        progress[id] = 0
         rec.status = .uploading
         try? context.save()
 
         Task {
             do {
-                try await UploadService.upload(payload)
+                try await UploadService.upload(payload) { p in
+                    progress[id] = p
+                }
                 await MainActor.run { rec.status = .uploaded; try? context.save() }
             } catch {
                 await MainActor.run {
@@ -168,7 +176,7 @@ struct JobDetailView: View {
                     try? context.save()
                 }
             }
-            await MainActor.run { uploadingIDs.remove(payload.id) }
+            await MainActor.run { progress[id] = nil }
         }
     }
 
