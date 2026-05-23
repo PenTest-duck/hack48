@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
   const videoId = body.video_id ? String(body.video_id) : null;
   if (!videoId) return json({ error: "video_id is required" }, 400);
 
-  const res = await fetch("https://api.twelvelabs.io/v1.3/generate", {
+  const res = await fetch("https://api.twelvelabs.io/v1.3/analyze", {
     method: "POST",
     headers: {
       "x-api-key": tlApiKey,
@@ -37,11 +37,12 @@ Deno.serve(async (req) => {
 
   if (!res.ok) {
     const text = await res.text();
-    return json({ error: `TwelveLabs generate failed (${res.status}): ${text}` }, 500);
+    return json({ error: `TwelveLabs analyze failed (${res.status}): ${text}` }, 500);
   }
 
   const data = await res.json();
-  return json({ description: data.data ?? data.text ?? data.result ?? null }, 200);
+  const description = data.data ?? data.summary ?? data.text ?? data.result ?? null;
+  return json({ description }, 200);
 });
 
 function json(body: unknown, status: number) {

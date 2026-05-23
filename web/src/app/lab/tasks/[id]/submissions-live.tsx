@@ -294,6 +294,7 @@ function SubmissionCard({
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null)
   const [loadingStatus, setLoadingStatus] = useState(false)
   const [description, setDescription] = useState<string | null>(null)
+  const [descError, setDescError] = useState<string | null>(null)
   const [loadingDesc, setLoadingDesc] = useState(false)
 
   const fetchStatus = useCallback(async () => {
@@ -324,6 +325,7 @@ function SubmissionCard({
 
   const fetchDescription = useCallback(async (videoId: string) => {
     setLoadingDesc(true)
+    setDescError(null)
     try {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
@@ -338,10 +340,19 @@ function SubmissionCard({
           body: JSON.stringify({ video_id: videoId }),
         }
       )
-      if (res.ok) {
-        const data = await res.json()
-        setDescription(data.description ?? null)
+      const data = await res.json()
+      if (res.ok && data.description) {
+        setDescription(data.description)
+      } else {
+        const msg = data.error ?? 'No description returned'
+        setDescError(
+          msg.includes('index_not_supported_for_generate')
+            ? 'Your TwelveLabs index was created without the Pegasus engine. Recreate it with Pegasus enabled to use descriptions.'
+            : msg
+        )
       }
+    } catch {
+      setDescError('Failed to fetch description')
     } finally {
       setLoadingDesc(false)
     }
@@ -495,6 +506,11 @@ function SubmissionCard({
                             >
                               Dismiss
                             </button>
+                          </div>
+                        )}
+                        {descError && (
+                          <div className="mt-1.5 rounded-md border border-[rgba(210,100,100,0.2)] bg-[rgba(210,100,100,0.06)] p-2.5">
+                            <p className="text-xs leading-relaxed text-[#f3a8a8]">{descError}</p>
                           </div>
                         )}
                       </div>
