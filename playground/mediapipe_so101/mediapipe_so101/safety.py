@@ -19,6 +19,14 @@ class SafetyConfig:
             raise ValueError(f"Missing safety limits for {sorted(missing_limits)}")
         if missing_delta:
             raise ValueError(f"Missing max_delta values for {sorted(missing_delta)}")
+        for key in CONTROLLED_KEYS:
+            low, high = self.limits[key]
+            if low >= high:
+                raise ValueError(f"Invalid safety limit for {key}: {low} >= {high}")
+            if self.max_delta[key] <= 0:
+                raise ValueError(
+                    f"Invalid max_delta for {key}: {self.max_delta[key]} <= 0"
+                )
         if not 0.0 < self.smoothing <= 1.0:
             raise ValueError("smoothing must be in the interval (0, 1]")
         if self.stale_timeout_ms <= 0:
@@ -28,6 +36,7 @@ class SafetyConfig:
 class TargetFilter:
     def __init__(self, config: SafetyConfig, initial_targets: RobotTargets) -> None:
         self.config = config
+        self._validate_initial_targets(initial_targets)
         self._last = initial_targets
 
     @property
@@ -97,6 +106,16 @@ class TargetFilter:
     def _smooth(self, previous: float, desired: float) -> float:
         alpha = self.config.smoothing
         return previous + alpha * (desired - previous)
+
+    def _validate_initial_targets(self, initial_targets: RobotTargets) -> None:
+        values = initial_targets.as_action()
+        for key in CONTROLLED_KEYS:
+            low, high = self.config.limits[key]
+            if not low <= values[key] <= high:
+                raise ValueError(
+                    f"initial target for {key} is outside safety limit "
+                    f"[{low}, {high}]: {values[key]}"
+                )
 
     def _limit_delta_and_clamp(
         self, desired: RobotTargets

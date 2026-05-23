@@ -1,23 +1,37 @@
+import pytest
+
 from mediapipe_so101.safety import SafetyConfig, TargetFilter
 from mediapipe_so101.types import FreezeReason, RobotTargets
 
 
+def make_config(
+    *,
+    limits: dict[str, tuple[float, float]] | None = None,
+    max_delta: dict[str, float] | None = None,
+    smoothing: float = 1.0,
+    stale_timeout_ms: int = 150,
+) -> SafetyConfig:
+    return SafetyConfig(
+        limits=limits
+        or {
+            "wrist_flex.pos": (-20.0, 20.0),
+            "wrist_roll.pos": (-30.0, 30.0),
+            "gripper.pos": (20.0, 80.0),
+        },
+        max_delta=max_delta
+        or {
+            "wrist_flex.pos": 5.0,
+            "wrist_roll.pos": 10.0,
+            "gripper.pos": 15.0,
+        },
+        smoothing=smoothing,
+        stale_timeout_ms=stale_timeout_ms,
+    )
+
+
 def make_filter() -> TargetFilter:
     return TargetFilter(
-        SafetyConfig(
-            limits={
-                "wrist_flex.pos": (-20.0, 20.0),
-                "wrist_roll.pos": (-30.0, 30.0),
-                "gripper.pos": (20.0, 80.0),
-            },
-            max_delta={
-                "wrist_flex.pos": 5.0,
-                "wrist_roll.pos": 10.0,
-                "gripper.pos": 15.0,
-            },
-            smoothing=1.0,
-            stale_timeout_ms=150,
-        ),
+        make_config(),
         initial_targets=RobotTargets(0.0, 0.0, 50.0),
     )
 
@@ -123,3 +137,102 @@ def test_smoothing_blends_from_previous_target() -> None:
     )
 
     assert result.targets == RobotTargets(10.0, 20.0, 25.0)
+
+
+def test_rejects_missing_limit_key() -> None:
+    with pytest.raises(ValueError, match="Missing safety limits"):
+        make_config(
+            limits={
+                "wrist_flex.pos": (-20.0, 20.0),
+                "wrist_roll.pos": (-30.0, 30.0),
+            },
+        )
+
+
+def test_rejects_missing_max_delta_key() -> None:
+    with pytest.raises(ValueError, match="Missing max_delta values"):
+        make_config(
+            max_delta={
+                "wrist_flex.pos": 5.0,
+                "wrist_roll.pos": 10.0,
+            },
+        )
+
+
+@pytest.mark.parametrize("smoothing", [0.0, -0.1, 1.1])
+def test_rejects_invalid_smoothing(smoothing: float) -> None:
+    with pytest.raises(ValueError, match="smoothing"):
+        make_config(smoothing=smoothing)
+
+
+@pytest.mark.parametrize("stale_timeout_ms", [0, -1])
+def test_rejects_invalid_stale_timeout(stale_timeout_ms: int) -> None:
+    with pytest.raises(ValueError, match="stale_timeout_ms"):
+        make_config(stale_timeout_ms=stale_timeout_ms)
+
+
+@pytest.mark.parametrize("max_delta", [0.0, -1.0])
+def test_rejects_non_positive_max_delta(max_delta: float) -> None:
+    with pytest.raises(ValueError, match="max_delta"):
+        make_config(
+            max_delta={
+                "wrist_flex.pos": max_delta,
+                "wrist_roll.pos": 10.0,
+                "gripper.pos": 15.0,
+            },
+        )
+
+
+@pytest.mark.parametrize("limit", [(20.0, 20.0), (20.0, -20.0)])
+def test_rejects_inverted_or_equal_hard_limits(
+    limit: tuple[float, float],
+) -> None:
+    with pytest.raises(ValueError, match="limit"):
+        make_config(
+            limits={
+                "wrist_flex.pos": limit,
+                "wrist_roll.pos": (-30.0, 30.0),
+                "gripper.pos": (20.0, 80.0),
+            },
+        )
+
+
+def test_rejects_initial_target_outside_hard_limits() -> None:
+    with pytest.raises(ValueError, match="initial target"):
+        TargetFilter(
+            make_config(),
+            initial_targets=RobotTargets(wrist_flex=25.0, wrist_roll=0.0, gripper=50.0),
+        )
+
+
+def test_hard_limit_clamp_applies_when_delta_allows_desired_target() -> None:
+    filt = TargetFilter(
+        SafetyConfig(
+            limits={
+                "wrist_flex.pos": (-20.0, 20.0),
+                "wrist_roll.pos": (-30.0, 30.0),
+                "gripper.pos": (20.0, 80.0),
+            },
+            max_delta={
+                "wrist_flex.pos": 500.0,
+                "wrist_roll.pos": 500.0,
+                "gripper.pos": 500.0,
+            },
+            smoothing=1.0,
+            stale_timeout_ms=150,
+        ),
+        initial_targets=RobotTargets(0.0, 0.0, 50.0),
+    )
+
+    result = filt.update(
+        RobotTargets(wrist_flex=100.0, wrist_roll=-100.0, gripper=100.0),
+        now_ms=1000,
+        sample_timestamp_ms=1000,
+        sync_enabled=True,
+        neutral_ready=True,
+        deadman_active=True,
+        tracking_ok=True,
+    )
+
+    assert result.targets == RobotTargets(20.0, -30.0, 80.0)
+    assert result.clamped_keys == ("gripper.pos", "wrist_flex.pos", "wrist_roll.pos")
