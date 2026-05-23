@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import sys
 import threading
 import urllib.request
@@ -36,8 +37,15 @@ def ensure_model(model_path: Path) -> Path:
     model_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = model_path.with_suffix(model_path.suffix + ".tmp")
     print(f"Downloading Hand Landmarker model to {model_path}")
-    urllib.request.urlretrieve(MODEL_URL, tmp_path)
-    tmp_path.replace(model_path)
+    tmp_path.unlink(missing_ok=True)
+    try:
+        with urllib.request.urlopen(MODEL_URL, timeout=30) as response:
+            with tmp_path.open("wb") as output:
+                shutil.copyfileobj(response, output)
+        tmp_path.replace(model_path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
     return model_path
 
 
@@ -66,7 +74,8 @@ class LatestHandResult:
 
         best_index = 0
         best_score = -1.0
-        for idx, handedness in enumerate(result.handedness):
+        for idx in range(len(result.hand_landmarks)):
+            handedness = result.handedness[idx] if idx < len(result.handedness) else []
             score = handedness[0].score if handedness else 0.0
             if score > best_score:
                 best_index = idx
@@ -137,6 +146,8 @@ def draw_sample(frame, sample: HandSample | None) -> None:
         for point in sample.landmarks
     ]
     for start, end in HAND_CONNECTIONS:
+        if start >= len(points) or end >= len(points):
+            continue
         cv2.line(frame, points[start], points[end], (65, 210, 120), 2, cv2.LINE_AA)
     for index, point in enumerate(points):
         radius = 6 if index in {4, 8, 12, 16, 20} else 4
