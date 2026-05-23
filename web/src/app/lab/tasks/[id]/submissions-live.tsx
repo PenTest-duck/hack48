@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useState, useTransition, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { approveSubmission, rejectSubmission } from '@/app/actions/submissions'
 import { triggerToast } from '@/components/toast'
@@ -13,6 +13,7 @@ type Submission = {
   metadata: Record<string, unknown> | null
   created_at: string
   signedUrl: string | null
+  score?: number
 }
 
 type Props = {
@@ -24,6 +25,12 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
   const [submissions, setSubmissions] = useState<Submission[]>(initialSubmissions)
   const [newCount, setNewCount] = useState(0)
   const [isPending, startTransition] = useTransition()
+
+  // Search state
+  const [query, setQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<Submission[] | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -39,7 +46,6 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
           filter: `task_id=eq.${taskId}`,
         },
         async (payload) => {
-          // Generate signed URL client-side immediately — no extra round-trip
           const { data } = await supabase.storage
             .from('recordings')
             .createSignedUrl(payload.new.storage_path.replace(/\/$/, '') + '/video.mp4', 3600)
@@ -61,62 +67,178 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
     }
   }, [taskId])
 
+  const runSearch = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setSearchResults(null)
+      setIsSearching(false)
+      return
+    }
+
+    setIsSearching(true)
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/search-videos`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token ?? ''}`,
+          },
+          body: JSON.stringify({ query: q, task_id: taskId }),
+        }
+      )
+      if (res.ok) {
+        const body = await res.json()
+        setSearchResults(body.results ?? [])
+      } else {
+        setSearchResults([])
+      }
+    } catch {
+      setSearchResults([])
+    } finally {
+      setIsSearching(false)
+    }
+  }, [taskId])
+
+  function handleQueryChange(value: string) {
+    setQuery(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!value.trim()) {
+      setSearchResults(null)
+      setIsSearching(false)
+      return
+    }
+    setIsSearching(true)
+    debounceRef.current = setTimeout(() => runSearch(value), 300)
+  }
+
   function handleApprove(submissionId: string) {
     startTransition(async () => {
       await approveSubmission(submissionId, taskId)
-      setSubmissions(prev =>
-        prev.map(s => s.id === submissionId ? { ...s, status: 'approved' } : s)
-      )
+      const update = (s: Submission) => s.id === submissionId ? { ...s, status: 'approved' as const } : s
+      setSubmissions(prev => prev.map(update))
+      setSearchResults(prev => prev ? prev.map(update) : prev)
     })
   }
 
   function handleReject(submissionId: string) {
     startTransition(async () => {
       await rejectSubmission(submissionId, taskId)
-      setSubmissions(prev =>
-        prev.map(s => s.id === submissionId ? { ...s, status: 'rejected' } : s)
-      )
+      const update = (s: Submission) => s.id === submissionId ? { ...s, status: 'rejected' as const } : s
+      setSubmissions(prev => prev.map(update))
+      setSearchResults(prev => prev ? prev.map(update) : prev)
     })
   }
 
-  if (!submissions.length) {
-    return (
-      <div className="surface-panel py-20 text-center">
-        <div className="text-4xl mb-3">📡</div>
-        <p className="font-medium text-white">Waiting for submissions</p>
-        <p className="mt-1 text-sm text-[var(--foreground-secondary)]">This page updates live when collectors upload data</p>
-        <div className="mt-4 flex items-center justify-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-[#2f9e44] animate-pulse" />
-          <span className="text-xs text-[var(--foreground-secondary)]">Listening for uploads</span>
-        </div>
-      </div>
-    )
-  }
+  const displayed = searchResults !== null ? searchResults : submissions
+  const isFiltered = searchResults !== null
 
   return (
     <div>
+      {/* Search bar */}
+      <div className="mb-4">
+        <div className="relative">
+          <svg
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--foreground-secondary)] pointer-events-none"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+          </svg>
+          <input
+            type="text"
+            value={query}
+            onChange={e => handleQueryChange(e.target.value)}
+            placeholder="Search submissions by content… (e.g. "person walking" or "outdoor scene")"
+            className="input-dark w-full rounded-lg pl-10 pr-10 py-2.5 text-sm"
+          />
+          {isSearching && (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              <span className="h-4 w-4 rounded-full border-2 border-[var(--foreground-secondary)] border-t-transparent animate-spin block" />
+            </div>
+          )}
+          {!isSearching && query && (
+            <button
+              onClick={() => { setQuery(''); setSearchResults(null) }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--foreground-secondary)] hover:text-white transition-colors"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+        {isFiltered && !isSearching && (
+          <p className="mt-1.5 text-xs text-[var(--foreground-secondary)]">
+            {searchResults!.length} result{searchResults!.length !== 1 ? 's' : ''} for &ldquo;{query}&rdquo;
+          </p>
+        )}
+      </div>
+
+      {/* Header row */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-semibold text-white">
-          Submissions <span className="font-normal text-[var(--foreground-secondary)]">({submissions.length})</span>
+          {isFiltered ? 'Search Results' : 'Submissions'}{' '}
+          <span className="font-normal text-[var(--foreground-secondary)]">({displayed.length})</span>
         </h2>
-        {newCount > 0 && (
+        {!isFiltered && newCount > 0 && (
           <span className="rounded-full bg-[rgba(47,158,68,0.16)] px-2 py-1 text-xs font-medium text-[#99ddaa]">
             +{newCount} new this session
           </span>
         )}
       </div>
 
-      <div className="space-y-4">
-        {submissions.map(submission => (
-          <SubmissionCard
-            key={submission.id}
-            submission={submission}
-            onApprove={() => handleApprove(submission.id)}
-            onReject={() => handleReject(submission.id)}
-            isPending={isPending}
-          />
-        ))}
-      </div>
+      {/* Empty states */}
+      {!isSearching && displayed.length === 0 && !isFiltered && (
+        <div className="surface-panel py-20 text-center">
+          <div className="text-4xl mb-3">📡</div>
+          <p className="font-medium text-white">Waiting for submissions</p>
+          <p className="mt-1 text-sm text-[var(--foreground-secondary)]">This page updates live when collectors upload data</p>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-[#2f9e44] animate-pulse" />
+            <span className="text-xs text-[var(--foreground-secondary)]">Listening for uploads</span>
+          </div>
+        </div>
+      )}
+
+      {!isSearching && displayed.length === 0 && isFiltered && (
+        <div className="surface-panel py-16 text-center">
+          <div className="text-4xl mb-3">🔍</div>
+          <p className="font-medium text-white">No matching submissions</p>
+          <p className="mt-1 text-sm text-[var(--foreground-secondary)]">Try a different search term</p>
+        </div>
+      )}
+
+      {/* Loading skeleton while searching */}
+      {isSearching && (
+        <div className="space-y-4">
+          {[1, 2].map(i => (
+            <div key={i} className="surface-panel overflow-hidden animate-pulse">
+              <div className="h-40 bg-[var(--surface-muted)]" />
+              <div className="p-4 space-y-2">
+                <div className="h-3 w-24 rounded bg-[rgba(255,255,255,0.06)]" />
+                <div className="h-3 w-40 rounded bg-[rgba(255,255,255,0.04)]" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Cards */}
+      {!isSearching && displayed.length > 0 && (
+        <div className="space-y-4">
+          {displayed.map(submission => (
+            <SubmissionCard
+              key={submission.id}
+              submission={submission}
+              onApprove={() => handleApprove(submission.id)}
+              onReject={() => handleReject(submission.id)}
+              isPending={isPending}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -169,6 +291,11 @@ function SubmissionCard({
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusStyles[submission.status]}`}>
                 {submission.status}
               </span>
+              {submission.score !== undefined && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-[rgba(59,91,219,0.16)] text-[#aebeff]">
+                  {Math.round(submission.score * 100)}% match
+                </span>
+              )}
               <span className="text-xs text-[var(--foreground-secondary)]">
                 {new Date(submission.created_at).toLocaleString()}
               </span>
