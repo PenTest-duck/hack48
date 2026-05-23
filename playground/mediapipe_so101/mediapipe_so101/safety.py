@@ -22,12 +22,15 @@ class SafetyConfig:
             raise ValueError(f"Missing safety limits for {sorted(missing_limits)}")
         if missing_delta:
             raise ValueError(f"Missing max_delta values for {sorted(missing_delta)}")
+        validated_limits: dict[str, tuple[float, float]] = {}
+        validated_max_delta: dict[str, float] = {}
         for key in CONTROLLED_KEYS:
             low, high = self.limits[key]
             if not math.isfinite(low) or not math.isfinite(high):
                 raise ValueError(f"Safety limits for {key} must be finite")
             if low >= high:
                 raise ValueError(f"Invalid safety limit for {key}: {low} >= {high}")
+            validated_limits[key] = (low, high)
             max_delta = self.max_delta[key]
             if not math.isfinite(max_delta):
                 raise ValueError(f"max_delta for {key} must be finite")
@@ -35,6 +38,7 @@ class SafetyConfig:
                 raise ValueError(
                     f"Invalid max_delta for {key}: {max_delta} <= 0"
                 )
+            validated_max_delta[key] = max_delta
         if not math.isfinite(self.smoothing):
             raise ValueError("smoothing must be finite")
         if not 0.0 < self.smoothing <= 1.0:
@@ -46,8 +50,8 @@ class SafetyConfig:
         ):
             raise ValueError("stale_timeout_ms must be a positive integer")
 
-        object.__setattr__(self, "limits", MappingProxyType(dict(self.limits)))
-        object.__setattr__(self, "max_delta", MappingProxyType(dict(self.max_delta)))
+        object.__setattr__(self, "limits", MappingProxyType(validated_limits))
+        object.__setattr__(self, "max_delta", MappingProxyType(validated_max_delta))
 
 
 class TargetFilter:

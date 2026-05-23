@@ -350,6 +350,30 @@ def test_safety_config_defensively_copies_input_dicts() -> None:
     assert config.max_delta["wrist_flex.pos"] == 5.0
 
 
+def test_safety_config_normalizes_list_limits_before_freezing() -> None:
+    wrist_limits = [-20.0, 20.0]
+    limits = {
+        "wrist_flex.pos": wrist_limits,
+        "wrist_roll.pos": [-30.0, 30.0],
+        "gripper.pos": [20.0, 80.0],
+    }
+
+    config = SafetyConfig(
+        limits=limits,
+        max_delta={
+            "wrist_flex.pos": 5.0,
+            "wrist_roll.pos": 10.0,
+            "gripper.pos": 15.0,
+        },
+        smoothing=1.0,
+        stale_timeout_ms=150,
+    )
+    wrist_limits[0] = -1000.0
+    wrist_limits[1] = 1000.0
+
+    assert config.limits["wrist_flex.pos"] == (-20.0, 20.0)
+
+
 def test_safety_config_mappings_are_immutable() -> None:
     config = make_config()
 
