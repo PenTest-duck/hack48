@@ -27,8 +27,8 @@ export default async function LabTaskPage({ params }: { params: Promise<{ id: st
   const submissions = await Promise.all(
     (rawSubmissions ?? []).map(async (s) => {
       const { data } = await supabase.storage
-        .from('submissions')
-        .createSignedUrl(s.storage_path, 3600)
+        .from('recordings')
+        .createSignedUrl(s.storage_path.replace(/\/$/, '') + '/video.mp4', 3600)
       return { ...s, signedUrl: data?.signedUrl ?? null }
     })
   )

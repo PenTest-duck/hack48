@@ -41,8 +41,8 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
         async (payload) => {
           // Generate signed URL client-side immediately — no extra round-trip
           const { data } = await supabase.storage
-            .from('submissions')
-            .createSignedUrl(payload.new.storage_path, 3600)
+            .from('recordings')
+            .createSignedUrl(payload.new.storage_path.replace(/\/$/, '') + '/video.mp4', 3600)
 
           const newSubmission: Submission = {
             ...(payload.new as Submission),
