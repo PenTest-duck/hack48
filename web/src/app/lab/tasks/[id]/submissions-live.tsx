@@ -43,23 +43,11 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
           filter: `task_id=eq.${taskId}`,
         },
         async (payload) => {
-          let storagePath = (payload.new.storage_path as string | null) ?? ''
-          if (storagePath.startsWith('recordings/')) {
-            storagePath = storagePath.slice('recordings/'.length)
-          }
-          // iOS stores storage_path as a directory (trailing slash) with video.mp4 inside
-          const isDir = storagePath.endsWith('/')
-          const folder = isDir ? storagePath.slice(0, -1) : storagePath.substring(0, storagePath.lastIndexOf('/'))
-          const videoPath = isDir ? `${storagePath}video.mp4` : storagePath
-
+          const folder = (payload.new.storage_path as string | null ?? '').replace(/\/$/, '')
           const [videoResult, ...fileResults] = await Promise.all([
-            videoPath
-              ? supabase.storage.from('recordings').createSignedUrl(videoPath, 3600)
-              : Promise.resolve({ data: null }),
+            supabase.storage.from('recordings').createSignedUrl(`${folder}/video.mp4`, 3600),
             ...ADDITIONAL_FILES.map(name =>
-              folder
-                ? supabase.storage.from('recordings').createSignedUrl(`${folder}/${name}`, 3600)
-                : Promise.resolve({ data: null })
+              supabase.storage.from('recordings').createSignedUrl(`${folder}/${name}`, 3600)
             ),
           ])
 
