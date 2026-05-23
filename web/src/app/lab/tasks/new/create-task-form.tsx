@@ -82,7 +82,7 @@ export default function CreateTaskForm({
               Create Task
             </span>
           </div>
-          <h1 className="text-3xl font-black tracking-[-0.03em] text-white sm:text-4xl">
+          <h1 className="text-3xl font-black tracking-[-0.03em] text-[var(--foreground)] sm:text-4xl">
             Build a collection brief collectors can execute fast
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--foreground-secondary)] sm:text-base">
@@ -95,14 +95,14 @@ export default function CreateTaskForm({
         <form id="create-task-form" action={action} className="space-y-6">
           <section className="surface-panel p-5 sm:p-6">
             <div className="mb-4">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Task brief</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--foreground)]">Task brief</h2>
               <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
                 Anchor the assignment with a clear title and capture instructions.
               </p>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-white">Task title</label>
+                <label className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">Task title</label>
                 <input
                   name="title"
                   required
@@ -113,7 +113,7 @@ export default function CreateTaskForm({
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-white">Description</label>
+                <label className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">Description</label>
                 <textarea
                   name="description"
                   required
@@ -129,7 +129,7 @@ export default function CreateTaskForm({
 
           <section className="surface-panel p-5 sm:p-6">
             <div className="mb-4">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Reference assets</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--foreground)]">Reference assets</h2>
               <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
                 Upload example stills or clips that show the collector the expected look.
               </p>
@@ -137,9 +137,9 @@ export default function CreateTaskForm({
 
             <label
               htmlFor={uploadId}
-              className="flex min-h-52 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[var(--border)] bg-[var(--surface-muted)] px-6 py-8 text-center transition-colors hover:border-[rgba(255,255,255,0.22)]"
+              className="flex min-h-52 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[var(--border)] bg-[var(--surface-muted)] px-6 py-8 text-center transition-colors hover:border-[rgba(0,0,0,0.3)]"
             >
-              <span className="text-sm font-semibold text-white">Drop reference files here</span>
+              <span className="text-sm font-semibold text-[var(--foreground)]">Drop reference files here</span>
               <span className="mt-2 text-sm text-[var(--foreground-secondary)]">
                 Images and short video clips work best
               </span>
@@ -161,7 +161,7 @@ export default function CreateTaskForm({
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {assets.map((asset) => (
                   <div key={asset.url} className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
-                    <div className="aspect-[4/3] bg-black/30">
+                    <div className="aspect-[4/3] bg-[rgba(0,0,0,0.04)]">
                       {asset.type.startsWith('video/') ? (
                         <video src={asset.url} className="h-full w-full object-cover" muted playsInline />
                       ) : (
@@ -180,7 +180,7 @@ export default function CreateTaskForm({
 
           <section className="surface-panel p-5 sm:p-6">
             <div className="mb-4">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Requirements</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--foreground)]">Requirements</h2>
               <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
                 Signal the environments or qualities the collector must satisfy.
               </p>
@@ -198,7 +198,7 @@ export default function CreateTaskForm({
                     className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
                       selected
                         ? requirement.className
-                        : 'border-[var(--border)] bg-transparent text-[var(--foreground-secondary)] hover:border-[rgba(255,255,255,0.22)] hover:text-white'
+                        : 'border-[var(--border)] bg-transparent text-[var(--foreground-secondary)] hover:border-[rgba(0,0,0,0.3)] hover:text-[var(--foreground)]'
                     }`}
                   >
                     {requirement.label}
@@ -214,7 +214,7 @@ export default function CreateTaskForm({
 
           <section className="surface-panel p-5 sm:p-6">
             <div className="mb-4">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Payout</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--foreground)]">Payout</h2>
               <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
                 Price each accepted submission and define how many are needed.
               </p>
@@ -222,7 +222,7 @@ export default function CreateTaskForm({
 
             <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-white">Bounty per submission</label>
+                <label className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">Bounty per submission</label>
                 <div className="flex overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
                   <span className="flex items-center border-r border-[var(--border)] px-4 text-sm font-medium text-[var(--foreground-secondary)]">
                     $
@@ -235,18 +235,18 @@ export default function CreateTaskForm({
                     required
                     value={bounty}
                     onChange={(event) => setBounty(event.target.value)}
-                    className="w-full bg-transparent px-4 py-3 text-sm text-white outline-none"
+                    className="w-full bg-transparent px-4 py-3 text-sm text-[var(--foreground)] outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-white">Submissions required</label>
+                <label className="mb-1.5 block text-sm font-medium text-[var(--foreground)]">Submissions required</label>
                 <div className="flex overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
                   <button
                     type="button"
                     onClick={() => setQuantity((current) => Math.max(1, current - 1))}
-                    className="w-11 border-r border-[var(--border)] text-lg text-[var(--foreground-secondary)] transition-colors hover:text-white"
+                    className="w-11 border-r border-[var(--border)] text-lg text-[var(--foreground-secondary)] transition-colors hover:text-[var(--foreground)]"
                   >
                     −
                   </button>
@@ -257,12 +257,12 @@ export default function CreateTaskForm({
                     required
                     value={quantity}
                     onChange={(event) => setQuantity(Math.max(1, Number.parseInt(event.target.value || '1', 10)))}
-                    className="w-full bg-transparent px-4 py-3 text-center text-sm text-white outline-none"
+                    className="w-full bg-transparent px-4 py-3 text-center text-sm text-[var(--foreground)] outline-none"
                   />
                   <button
                     type="button"
                     onClick={() => setQuantity((current) => current + 1)}
-                    className="w-11 border-l border-[var(--border)] text-lg text-[var(--foreground-secondary)] transition-colors hover:text-white"
+                    className="w-11 border-l border-[var(--border)] text-lg text-[var(--foreground-secondary)] transition-colors hover:text-[var(--foreground)]"
                   >
                     +
                   </button>
@@ -273,7 +273,7 @@ export default function CreateTaskForm({
 
           <section className="surface-panel p-5 sm:p-6">
             <div className="mb-4">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Deadline</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--foreground)]">Deadline</h2>
               <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
                 Set the final collection cutoff for this task.
               </p>
@@ -294,7 +294,7 @@ export default function CreateTaskForm({
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--foreground-secondary)]">
                 Estimated total spend
               </p>
-              <div className="mt-3 text-4xl font-black tracking-[-0.04em] text-[#aebeff]">
+              <div className="mt-3 text-4xl font-black tracking-[-0.04em] text-[var(--lab)]">
                 ${estimatedSpend.toFixed(2)}
               </div>
               <p className="mt-2 text-sm text-[var(--foreground-secondary)]">
@@ -334,10 +334,10 @@ export default function CreateTaskForm({
                     { label: 'Deadline', done: deadline.length > 0 },
                   ].map((item) => (
                     <li key={item.label} className="flex items-center justify-between gap-3">
-                      <span className={item.done ? 'text-white' : 'text-[var(--foreground-secondary)]'}>
+                      <span className={item.done ? 'text-[var(--foreground)]' : 'text-[var(--foreground-secondary)]'}>
                         {item.label}
                       </span>
-                      <span className={`text-xs font-semibold uppercase tracking-[0.12em] ${item.done ? 'text-[#99ddaa]' : 'text-[var(--foreground-secondary)]'}`}>
+                      <span className={`text-xs font-semibold uppercase tracking-[0.12em] ${item.done ? 'text-[var(--collector)]' : 'text-[var(--foreground-secondary)]'}`}>
                         {item.done ? 'Ready' : 'Missing'}
                       </span>
                     </li>
@@ -355,7 +355,7 @@ export default function CreateTaskForm({
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-base font-semibold text-white">
+                      <h3 className="text-base font-semibold text-[var(--foreground)]">
                         {title.trim() || 'Untitled task'}
                       </h3>
                       <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
@@ -363,7 +363,7 @@ export default function CreateTaskForm({
                       </p>
                     </div>
                     <div className="text-right">
-                      <div className="text-2xl font-black tracking-[-0.04em] text-[#8ad09a]">
+                      <div className="text-2xl font-black tracking-[-0.04em] text-[var(--collector)]">
                         ${bountyValue.toFixed(2)}
                       </div>
                       <div className="text-xs text-[var(--foreground-secondary)]">per submission</div>

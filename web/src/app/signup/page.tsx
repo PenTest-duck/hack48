@@ -20,27 +20,27 @@ export default function SignupPage() {
     <div className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4 py-8">
       <div className="surface-panel w-full max-w-md p-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Create account</h1>
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">Create account</h1>
           <p className="mt-1 text-sm text-[var(--foreground-secondary)]">Join the data marketplace</p>
         </div>
 
         <form action={formAction} className="space-y-4">
           {/* Role selection */}
           <div>
-            <label className="mb-2 block text-sm font-medium text-white">I am a...</label>
+            <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">I am a...</label>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => setRole('lab')}
                 className={`rounded-lg border p-4 text-left transition-all ${
                   role === 'lab'
-                    ? 'border-[rgba(59,91,219,0.65)] bg-[rgba(59,91,219,0.16)] text-white'
-                    : 'border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground-secondary)] hover:border-[rgba(255,255,255,0.22)]'
+                    ? 'border-[rgba(59,91,219,0.65)] bg-[rgba(59,91,219,0.08)] text-[var(--foreground)]'
+                    : 'border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground-secondary)] hover:border-[rgba(0,0,0,0.3)]'
                 }`}
               >
                 <div className="text-lg mb-1">🔬</div>
                 <div className="font-medium text-sm">Lab / Researcher</div>
-                <div className={`mt-1 text-xs ${role === 'lab' ? 'text-[#d7deff]' : 'text-[var(--foreground-secondary)]'}`}>
+                <div className={`mt-1 text-xs ${role === 'lab' ? 'text-[#2a4db8]' : 'text-[var(--foreground-secondary)]'}`}>
                   Post data collection tasks
                 </div>
               </button>
@@ -49,13 +49,13 @@ export default function SignupPage() {
                 onClick={() => setRole('collector')}
                 className={`rounded-lg border p-4 text-left transition-all ${
                   role === 'collector'
-                    ? 'border-[rgba(47,158,68,0.7)] bg-[rgba(47,158,68,0.16)] text-white'
-                    : 'border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground-secondary)] hover:border-[rgba(255,255,255,0.22)]'
+                    ? 'border-[rgba(47,158,68,0.7)] bg-[rgba(47,158,68,0.1)] text-[var(--foreground)]'
+                    : 'border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground-secondary)] hover:border-[rgba(0,0,0,0.3)]'
                 }`}
               >
                 <div className="text-lg mb-1">📱</div>
                 <div className="font-medium text-sm">Data Collector</div>
-                <div className={`mt-1 text-xs ${role === 'collector' ? 'text-[#c6efd0]' : 'text-[var(--foreground-secondary)]'}`}>
+                <div className={`mt-1 text-xs ${role === 'collector' ? 'text-[#1f7a30]' : 'text-[var(--foreground-secondary)]'}`}>
                   Earn money collecting data
                 </div>
               </button>
@@ -64,7 +64,7 @@ export default function SignupPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-white">Display name</label>
+            <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Display name</label>
             <input
               name="display_name"
               type="text"
@@ -75,7 +75,7 @@ export default function SignupPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-white">Email</label>
+            <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Email</label>
             <input
               name="email"
               type="email"
@@ -85,7 +85,7 @@ export default function SignupPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-white">Password</label>
+            <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Password</label>
             <input
               name="password"
               type="password"
@@ -122,7 +122,7 @@ export default function SignupPage() {
 
         <p className="mt-6 text-center text-sm text-[var(--foreground-secondary)]">
           Already have an account?{' '}
-          <Link href="/login" className="font-medium text-white hover:underline">
+          <Link href="/login" className="font-medium text-[var(--foreground)] hover:underline">
             Sign in
           </Link>
         </p>

@@ -28,7 +28,6 @@ async function submitQuestionnaire(formData: FormData) {
   const capabilities = formData.getAll('capabilities') as string[]
   const locationCity = formData.get('location_city') as string
 
-  // Derive capabilities from answers — both arrays are capability values
   await supabase.from('collector_profiles').upsert({
     user_id: user.id,
     capabilities,
@@ -43,7 +42,6 @@ export default async function OnboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Skip onboarding if already completed
   const { data: existing } = await supabase
     .from('collector_profiles')
     .select('user_id')
@@ -55,7 +53,7 @@ export default async function OnboardPage() {
   return (
     <div className="max-w-lg">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">Tell us about yourself</h1>
+        <h1 className="text-2xl font-bold text-[var(--foreground)]">Tell us about yourself</h1>
         <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
           We use this to match you with the right data collection tasks.
         </p>
@@ -63,7 +61,7 @@ export default async function OnboardPage() {
 
       <form action={submitQuestionnaire} className="space-y-8">
         <div>
-          <label className="mb-1 block text-sm font-medium text-white">Your city</label>
+          <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Your city</label>
           <input
             name="location_city"
             type="text"
@@ -74,7 +72,7 @@ export default async function OnboardPage() {
 
         {CAPABILITY_QUESTIONS.map((q, i) => (
           <div key={i}>
-            <p className="mb-3 text-sm font-medium text-white">{q.question}</p>
+            <p className="mb-3 text-sm font-medium text-[var(--foreground)]">{q.question}</p>
             <div className="space-y-2">
               {q.options.map(opt => (
                 <label key={opt.value} className="surface-muted flex cursor-pointer items-start gap-3 p-3">
@@ -82,7 +80,7 @@ export default async function OnboardPage() {
                     type="checkbox"
                     name="capabilities"
                     value={opt.value}
-                    className="mt-0.5 rounded border-white/20 bg-transparent"
+                    className="mt-0.5 rounded border-black/20 bg-transparent"
                   />
                   <span className="text-sm text-[var(--foreground-secondary)]">{opt.label}</span>
                 </label>

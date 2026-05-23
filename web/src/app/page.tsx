@@ -3,34 +3,34 @@ import Link from 'next/link'
 function LogoMark() {
   return (
     <div className="grid grid-cols-2 gap-1">
-      <span className="h-2.5 w-2.5 rounded-[2px] bg-white" />
+      <span className="h-2.5 w-2.5 rounded-[2px] bg-[var(--foreground)]" />
       <span className="h-2.5 w-2.5 rounded-[2px] bg-[var(--lab)]" />
       <span className="h-2.5 w-2.5 rounded-[2px] bg-[var(--collector)]" />
-      <span className="h-2.5 w-2.5 rounded-[2px] bg-white/25" />
+      <span className="h-2.5 w-2.5 rounded-[2px] bg-[var(--foreground)]/20" />
     </div>
   )
 }
 
 export default function Home() {
   return (
-    <div className="h-[100svh] overflow-hidden bg-[var(--background)] text-white">
+    <div className="h-[100svh] overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
       <div className="mx-auto flex h-full max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-6">
         <header className="flex items-center justify-between border-b border-[var(--border)] pb-4">
           <Link href="/" className="flex items-center gap-3">
             <LogoMark />
-            <span className="text-sm font-semibold uppercase tracking-[0.2em] text-white">
+            <span className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--foreground)]">
               DataMarket
             </span>
           </Link>
 
           <nav className="hidden items-center gap-6 text-sm text-[var(--foreground-secondary)] md:flex">
-            <Link href="/signup" className="transition-colors hover:text-white">Labs</Link>
-            <Link href="/signup" className="transition-colors hover:text-white">Collectors</Link>
-            <Link href="/signup" className="transition-colors hover:text-white">How it works</Link>
-            <Link href="/login" className="transition-colors hover:text-white">Login</Link>
+            <Link href="/signup" className="transition-colors hover:text-[var(--foreground)]">Labs</Link>
+            <Link href="/signup" className="transition-colors hover:text-[var(--foreground)]">Collectors</Link>
+            <Link href="/signup" className="transition-colors hover:text-[var(--foreground)]">How it works</Link>
+            <Link href="/login" className="transition-colors hover:text-[var(--foreground)]">Login</Link>
             <Link
               href="/signup"
-              className="btn-lab rounded-lg px-4 py-2 font-medium transition-colors"
+              className="rounded-lg bg-[var(--foreground)] px-4 py-2 font-medium text-white transition-colors hover:bg-[#333]"
             >
               Get started
             </Link>
@@ -43,7 +43,7 @@ export default function Home() {
               The physical data layer for AI
             </p>
 
-            <h1 className="max-w-4xl text-[clamp(3rem,8vw,6.5rem)] font-black leading-[0.92] tracking-[-0.04em] text-white">
+            <h1 className="max-w-4xl text-[clamp(3rem,8vw,6.5rem)] font-black leading-[0.92] tracking-[-0.04em] text-[var(--foreground)]">
               Let researchers{' '}
               <span className="italic font-normal [font-family:Georgia,serif]">
                 collect anything
@@ -80,10 +80,10 @@ export default function Home() {
               </p>
 
               <div className="mt-12 border-t border-[var(--border)] pt-6">
-                <p className="text-sm font-medium text-white">Are you a lab?</p>
+                <p className="text-sm font-medium text-[var(--foreground)]">Are you a lab?</p>
                 <Link
                   href="/signup"
-                  className="mt-2 inline-flex items-center text-sm font-medium text-[var(--lab)] transition-colors hover:text-white"
+                  className="mt-2 inline-flex items-center text-sm font-medium text-[var(--lab)] transition-colors hover:text-[var(--foreground)]"
                 >
                   Set up in 2 minutes →
                 </Link>

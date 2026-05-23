@@ -1,18 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0f0f0f;
-  --surface: #151515;
-  --surface-elevated: #1b1b1b;
-  --surface-muted: #121212;
-  --foreground: #f5f7fb;
-  --foreground-secondary: #a4adba;
-  --border: rgba(255, 255, 255, 0.1);
+  --background: #ffffff;
+  --surface: #f7f8fa;
+  --surface-elevated: #ffffff;
+  --surface-muted: #f1f3f5;
+  --foreground: #111111;
+  --foreground-secondary: #6b7280;
+  --border: rgba(0, 0, 0, 0.1);
   --lab: #3b5bdb;
   --collector: #2f9e44;
-  --amber: #d8a347;
-  --danger: #d26464;
-  --graphite: #737883;
+  --amber: #b45309;
+  --danger: #dc2626;
+  --graphite: #9ca3af;
 }
 
 @theme inline {
@@ -23,7 +23,7 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
@@ -37,7 +37,7 @@ a {
 }
 
 ::selection {
-  background: rgba(59, 91, 219, 0.45);
+  background: rgba(59, 91, 219, 0.15);
   color: var(--foreground);
 }
 
@@ -69,8 +69,8 @@ a {
 
 .input-dark:focus {
   outline: none;
-  border-color: rgba(59, 91, 219, 0.65);
-  box-shadow: 0 0 0 1px rgba(59, 91, 219, 0.28);
+  border-color: rgba(59, 91, 219, 0.5);
+  box-shadow: 0 0 0 1px rgba(59, 91, 219, 0.2);
 }
 
 .btn-lab {
@@ -92,13 +92,13 @@ a {
 }
 
 .btn-neutral {
-  background: var(--surface-elevated);
+  background: var(--surface-muted);
   color: var(--foreground);
   border: 1px solid var(--border);
 }
 
 .btn-neutral:hover {
-  background: #232323;
+  background: #e5e7eb;
 }
 
 .text-secondary {
@@ -110,35 +110,35 @@ a {
 }
 
 .role-pill-lab {
-  background: rgba(59, 91, 219, 0.16);
-  color: #aebeff;
+  background: rgba(59, 91, 219, 0.1);
+  color: #2a4db8;
 }
 
 .role-pill-collector {
-  background: rgba(47, 158, 68, 0.16);
-  color: #99ddaa;
+  background: rgba(47, 158, 68, 0.12);
+  color: #1f7a30;
 }
 
 .tag-outdoor {
-  background: rgba(95, 140, 88, 0.18);
-  color: #a7cf9f;
-  border-color: rgba(95, 140, 88, 0.4);
+  background: rgba(47, 120, 48, 0.1);
+  color: #1f7a30;
+  border-color: rgba(47, 120, 48, 0.3);
 }
 
 .tag-indoor {
-  background: rgba(98, 124, 173, 0.18);
-  color: #b1c6f0;
-  border-color: rgba(98, 124, 173, 0.4);
+  background: rgba(59, 91, 219, 0.1);
+  color: #2a4db8;
+  border-color: rgba(59, 91, 219, 0.28);
 }
 
 .tag-motion {
-  background: rgba(216, 163, 71, 0.16);
-  color: #f0cb7c;
-  border-color: rgba(216, 163, 71, 0.36);
+  background: rgba(180, 83, 9, 0.1);
+  color: #b45309;
+  border-color: rgba(180, 83, 9, 0.28);
 }
 
 .tag-monochrome {
-  background: rgba(115, 120, 131, 0.18);
-  color: #d3d7de;
-  border-color: rgba(115, 120, 131, 0.38);
+  background: rgba(90, 90, 90, 0.1);
+  color: #4b5563;
+  border-color: rgba(90, 90, 90, 0.28);
 }

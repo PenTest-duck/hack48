@@ -17,12 +17,12 @@ const REQUIREMENT_STYLES: Record<string, string> = {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  open: 'bg-[rgba(59,91,219,0.16)] text-[#aebeff]',
-  submitted: 'bg-[rgba(47,158,68,0.16)] text-[#99ddaa]',
-  'under review': 'bg-[rgba(216,163,71,0.16)] text-[#f0cb7c]',
-  approved: 'bg-[rgba(47,158,68,0.2)] text-[#b4f0c1]',
-  rejected: 'bg-[rgba(210,100,100,0.16)] text-[#f3a8a8]',
-  full: 'bg-[rgba(115,120,131,0.18)] text-[#d3d7de]',
+  open: 'bg-[rgba(59,91,219,0.1)] text-[#2a4db8]',
+  submitted: 'bg-[rgba(47,158,68,0.12)] text-[#1f7a30]',
+  'under review': 'bg-[rgba(180,83,9,0.1)] text-[#b45309]',
+  approved: 'bg-[rgba(47,158,68,0.14)] text-[#1f7a30]',
+  rejected: 'bg-[rgba(210,100,100,0.1)] text-[#c0392b]',
+  full: 'bg-[rgba(90,90,90,0.1)] text-[#4b5563]',
 }
 
 function formatRequirement(value: string) {
@@ -71,7 +71,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
     <div className="space-y-6">
       <Link
         href="/collector/tasks"
-        className="inline-block text-sm text-[var(--foreground-secondary)] transition-colors hover:text-white"
+        className="inline-block text-sm text-[var(--foreground-secondary)] transition-colors hover:text-[var(--foreground)]"
       >
         ← Browse tasks
       </Link>
@@ -93,7 +93,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
               )}
             </div>
 
-            <h1 className="text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl">
+            <h1 className="text-3xl font-black tracking-[-0.04em] text-[var(--foreground)] sm:text-4xl">
               {task.title}
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--foreground-secondary)] sm:text-lg">
@@ -102,7 +102,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
           </div>
 
           <div className="shrink-0">
-            <div className="text-5xl font-black tracking-[-0.05em] text-[#8ad09a]">
+            <div className="text-5xl font-black tracking-[-0.05em] text-[var(--collector)]">
               ${task.bounty_amount}
             </div>
             <div className="mt-2 text-sm uppercase tracking-[0.16em] text-[var(--foreground-secondary)]">
@@ -115,7 +115,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_320px]">
         <div className="space-y-6">
           <section className="surface-panel p-6">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Task description</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--foreground)]">Task description</h2>
             <p className="mt-4 text-base leading-7 text-[var(--foreground-secondary)]">
               {task.description || 'No additional description was provided for this task.'}
             </p>
@@ -123,7 +123,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
 
           <section className="surface-panel p-6">
             <div className="flex items-center justify-between gap-4">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Reference media</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--foreground)]">Reference media</h2>
               <span className="text-xs uppercase tracking-[0.16em] text-[var(--foreground-secondary)]">
                 {referenceAssets.length} asset{referenceAssets.length === 1 ? '' : 's'}
               </span>
@@ -132,7 +132,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
             {referenceAssets.length > 0 ? (
               <div className="mt-4 space-y-3">
                 <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-muted)]">
-                  <div className="aspect-[16/9] bg-black/20">
+                  <div className="aspect-[16/9] bg-[rgba(0,0,0,0.04)]">
                     {referenceAssets[0]?.type?.startsWith('video') ? (
                       <video src={referenceAssets[0].url} controls className="h-full w-full object-cover" />
                     ) : (
@@ -166,7 +166,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
           </section>
 
           <section className="surface-panel p-6">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Requirements</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--foreground)]">Requirements</h2>
             <div className="mt-4 flex flex-wrap gap-2">
               {requirements.length > 0 ? (
                 requirements.map((requirement) => (
@@ -184,19 +184,19 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
           </section>
 
           <section className="surface-panel p-6">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Secondary metadata</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--foreground)]">Secondary metadata</h2>
             <dl className="mt-4 grid gap-4 sm:grid-cols-3">
               <div>
                 <dt className="text-xs uppercase tracking-[0.16em] text-[var(--foreground-secondary)]">Task type</dt>
-                <dd className="mt-2 text-sm font-medium text-white">{task.data_type}</dd>
+                <dd className="mt-2 text-sm font-medium text-[var(--foreground)]">{task.data_type}</dd>
               </div>
               <div>
                 <dt className="text-xs uppercase tracking-[0.16em] text-[var(--foreground-secondary)]">Submission target</dt>
-                <dd className="mt-2 text-sm font-medium text-white">{task.quantity_needed}</dd>
+                <dd className="mt-2 text-sm font-medium text-[var(--foreground)]">{task.quantity_needed}</dd>
               </div>
               <div>
                 <dt className="text-xs uppercase tracking-[0.16em] text-[var(--foreground-secondary)]">Task ID</dt>
-                <dd className="mt-2 font-mono text-sm text-white">{id}</dd>
+                <dd className="mt-2 font-mono text-sm text-[var(--foreground)]">{id}</dd>
               </div>
             </dl>
           </section>
@@ -210,7 +210,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
                   <div className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${STATUS_STYLES[statusLabel]}`}>
                     {existingSubmission.status === 'pending' ? 'Under review' : existingSubmission.status}
                   </div>
-                  <h2 className="mt-4 text-xl font-bold text-white">
+                  <h2 className="mt-4 text-xl font-bold text-[var(--foreground)]">
                     {existingSubmission.status === 'approved'
                       ? 'Submission approved'
                       : existingSubmission.status === 'rejected'
@@ -225,7 +225,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
                   <p className="text-xs uppercase tracking-[0.16em] text-[var(--foreground-secondary)]">
                     Payout outcome
                   </p>
-                  <p className="mt-3 text-3xl font-black tracking-[-0.04em] text-[#8ad09a]">
+                  <p className="mt-3 text-3xl font-black tracking-[-0.04em] text-[var(--collector)]">
                     {existingSubmission.status === 'approved' ? `$${task.bounty_amount}` : '$0.00'}
                   </p>
                   <p className="mt-2 text-sm text-[var(--foreground-secondary)]">
@@ -242,7 +242,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
                 <div className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${STATUS_STYLES.full}`}>
                   Full
                 </div>
-                <h2 className="text-xl font-bold text-white">This task is closed</h2>
+                <h2 className="text-xl font-bold text-[var(--foreground)]">This task is closed</h2>
                 <p className="text-sm leading-6 text-[var(--foreground-secondary)]">
                   All available spots have been filled. Browse other tasks to find the next opportunity.
                 </p>
@@ -259,7 +259,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
                   <div className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${STATUS_STYLES.open}`}>
                     Open
                   </div>
-                  <h2 className="mt-4 text-xl font-bold text-white">Open in iPhone app</h2>
+                  <h2 className="mt-4 text-xl font-bold text-[var(--foreground)]">Open in iPhone app</h2>
                   <p className="mt-2 text-sm leading-6 text-[var(--foreground-secondary)]">
                     Submission happens on iOS only. Launch the DataMarket app, capture the task, and your confirmation state will appear here automatically.
                   </p>
@@ -277,7 +277,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
                     Task ID
                   </p>
                   <div className="mt-3 flex items-center gap-2">
-                    <code className="min-w-0 flex-1 truncate rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-xs text-white">
+                    <code className="min-w-0 flex-1 truncate rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-xs text-[var(--foreground)]">
                       {id}
                     </code>
                     <CopyButton text={id} />

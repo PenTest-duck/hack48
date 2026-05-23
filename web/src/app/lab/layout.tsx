@@ -20,18 +20,18 @@ export default async function LabLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <nav className="border-b border-[var(--border)] bg-[rgba(15,15,15,0.92)] px-4 py-4 backdrop-blur sm:px-6">
+      <nav className="border-b border-[var(--border)] bg-[rgba(255,255,255,0.95)] px-4 py-4 backdrop-blur sm:px-6">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div className="flex items-center gap-4 sm:gap-6">
-            <span className="font-semibold tracking-[0.08em] text-white">DataMarket</span>
+            <span className="font-semibold tracking-[0.08em] text-[var(--foreground)]">DataMarket</span>
             <span className="role-pill-lab rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]">Lab</span>
-            <Link href="/lab/dashboard" className="hidden text-sm text-[var(--foreground-secondary)] transition-colors hover:text-white sm:inline">Dashboard</Link>
-            <Link href="/lab/tasks/new" className="hidden text-sm text-[var(--foreground-secondary)] transition-colors hover:text-white sm:inline">New Task</Link>
+            <Link href="/lab/dashboard" className="hidden text-sm text-[var(--foreground-secondary)] transition-colors hover:text-[var(--foreground)] sm:inline">Dashboard</Link>
+            <Link href="/lab/tasks/new" className="hidden text-sm text-[var(--foreground-secondary)] transition-colors hover:text-[var(--foreground)] sm:inline">New Task</Link>
           </div>
           <div className="flex items-center gap-3 sm:gap-4">
             <span className="hidden text-sm text-[var(--foreground-secondary)] sm:inline">{profile?.display_name}</span>
             <form action={signOut}>
-              <button className="text-sm text-[var(--foreground-secondary)] transition-colors hover:text-white">Sign out</button>
+              <button className="text-sm text-[var(--foreground-secondary)] transition-colors hover:text-[var(--foreground)]">Sign out</button>
             </form>
           </div>
         </div>

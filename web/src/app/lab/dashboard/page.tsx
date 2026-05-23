@@ -16,7 +16,7 @@ export default async function LabDashboard() {
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-bold text-white">Your Tasks</h1>
+        <h1 className="text-2xl font-bold text-[var(--foreground)]">Your Tasks</h1>
         <Link
           href="/lab/tasks/new"
           className="btn-lab rounded-lg px-4 py-2 text-sm font-medium transition-colors"
@@ -25,25 +25,23 @@ export default async function LabDashboard() {
         </Link>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="surface-panel p-4">
-          <div className="text-2xl font-bold text-white">{tasks?.length ?? 0}</div>
+          <div className="text-2xl font-bold text-[var(--foreground)]">{tasks?.length ?? 0}</div>
           <div className="mt-1 text-sm text-[var(--foreground-secondary)]">Total tasks</div>
         </div>
         <div className="surface-panel p-4">
-          <div className="text-2xl font-bold text-white">
+          <div className="text-2xl font-bold text-[var(--foreground)]">
             {tasks?.reduce((sum, t) => sum + t.quantity_filled, 0) ?? 0}
           </div>
           <div className="mt-1 text-sm text-[var(--foreground-secondary)]">Submissions received</div>
         </div>
         <div className="surface-panel p-4">
-          <div className="text-2xl font-bold text-[#aebeff]">${totalSpend.toFixed(2)}</div>
+          <div className="text-2xl font-bold text-[var(--lab)]">${totalSpend.toFixed(2)}</div>
           <div className="mt-1 text-sm text-[var(--foreground-secondary)]">Total spent</div>
         </div>
       </div>
 
-      {/* Task list */}
       {!tasks?.length ? (
         <div className="surface-panel py-20 text-center">
           <div className="text-4xl mb-3">📋</div>
@@ -61,11 +59,11 @@ export default async function LabDashboard() {
             <Link
               key={task.id}
               href={`/lab/tasks/${task.id}`}
-              className="surface-panel block p-5 transition-colors hover:border-[rgba(255,255,255,0.2)]"
+              className="surface-panel block p-5 transition-colors hover:border-[rgba(0,0,0,0.2)]"
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="font-semibold text-white">{task.title}</h3>
+                  <h3 className="font-semibold text-[var(--foreground)]">{task.title}</h3>
                   <div className="flex items-center gap-3 mt-2">
                     <span className="text-sm text-[var(--foreground-secondary)]">
                       ${task.bounty_amount} / submission
@@ -78,14 +76,13 @@ export default async function LabDashboard() {
                 </div>
                 <span className={`rounded-full px-2 py-1 text-xs font-medium ${
                   task.status === 'open'
-                    ? 'bg-[rgba(59,91,219,0.16)] text-[#aebeff]'
-                    : 'bg-[rgba(115,120,131,0.18)] text-[#d3d7de]'
+                    ? 'bg-[rgba(59,91,219,0.1)] text-[#2a4db8]'
+                    : 'bg-[rgba(90,90,90,0.1)] text-[#4b5563]'
                 }`}>
                   {task.status}
                 </span>
               </div>
-              {/* Progress bar */}
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[rgba(255,255,255,0.08)]">
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[rgba(0,0,0,0.07)]">
                 <div
                   className="h-full rounded-full bg-[#3b5bdb]"
                   style={{ width: `${Math.min(100, (task.quantity_filled / task.quantity_needed) * 100)}%` }}

@@ -19,13 +19,13 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4">
       <div className="surface-panel w-full max-w-md p-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Welcome back</h1>
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">Welcome back</h1>
           <p className="mt-1 text-sm text-[var(--foreground-secondary)]">Sign in to your account</p>
         </div>
 
         <form action={formAction} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-white">Email</label>
+            <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Email</label>
             <input
               name="email"
               type="email"
@@ -34,7 +34,7 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-white">Password</label>
+            <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Password</label>
             <input
               name="password"
               type="password"
@@ -64,7 +64,7 @@ export default function LoginPage() {
 
         <p className="mt-6 text-center text-sm text-[var(--foreground-secondary)]">
           No account?{' '}
-          <Link href="/signup" className="font-medium text-white hover:underline">
+          <Link href="/signup" className="font-medium text-[var(--foreground)] hover:underline">
             Sign up
           </Link>
         </p>

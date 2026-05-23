@@ -11,8 +11,8 @@ type EarningsRow = {
 }
 
 const BADGE_STYLES = {
-  pending: 'bg-[rgba(216,163,71,0.16)] text-[#f0cb7c]',
-  approved: 'bg-[rgba(47,158,68,0.16)] text-[#99ddaa]',
+  pending: 'bg-[rgba(180,83,9,0.1)] text-[#b45309]',
+  approved: 'bg-[rgba(47,158,68,0.12)] text-[#1f7a30]',
 }
 
 function buildChartPoints(rows: EarningsRow[]) {
@@ -84,7 +84,7 @@ export default async function EarningsPage() {
     <div className="space-y-8">
       <section className="space-y-6">
         <div>
-          <h1 className="text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl">Earnings</h1>
+          <h1 className="text-3xl font-black tracking-[-0.04em] text-[var(--foreground)] sm:text-4xl">Earnings</h1>
           <p className="mt-2 text-sm text-[var(--foreground-secondary)]">
             Track what you have earned, what is still pending review, and how your payout history is building over time.
           </p>
@@ -95,7 +95,7 @@ export default async function EarningsPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--foreground-secondary)]">
               Total earned
             </p>
-            <div className="mt-4 text-[clamp(3rem,7vw,5rem)] font-black leading-none tracking-[-0.05em] text-[#8ad09a]">
+            <div className="mt-4 text-[clamp(3rem,7vw,5rem)] font-black leading-none tracking-[-0.05em] text-[var(--collector)]">
               ${total.toFixed(2)}
             </div>
           </div>
@@ -104,7 +104,7 @@ export default async function EarningsPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--foreground-secondary)]">
               Pending
             </p>
-            <div className="mt-4 text-3xl font-black tracking-[-0.04em] text-[#f0cb7c]">
+            <div className="mt-4 text-3xl font-black tracking-[-0.04em] text-[var(--amber)]">
               ${pending.toFixed(2)}
             </div>
           </div>
@@ -113,7 +113,7 @@ export default async function EarningsPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--foreground-secondary)]">
               Paid out
             </p>
-            <div className="mt-4 text-3xl font-black tracking-[-0.04em] text-white">
+            <div className="mt-4 text-3xl font-black tracking-[-0.04em] text-[var(--foreground)]">
               ${paidOut.toFixed(2)}
             </div>
           </div>
@@ -122,7 +122,7 @@ export default async function EarningsPage() {
         <div className="surface-panel p-6">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--foreground)]">
                 Earnings over time
               </h2>
               <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
@@ -138,9 +138,9 @@ export default async function EarningsPage() {
             {chartPoints.length > 0 ? (
               <div className="space-y-4">
                 <svg viewBox="0 0 320 128" className="h-40 w-full">
-                  <line x1="24" y1="104" x2="296" y2="104" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
-                  <line x1="24" y1="68" x2="296" y2="68" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-                  <line x1="24" y1="32" x2="296" y2="32" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+                  <line x1="24" y1="104" x2="296" y2="104" stroke="rgba(0,0,0,0.12)" strokeWidth="1" />
+                  <line x1="24" y1="68" x2="296" y2="68" stroke="rgba(0,0,0,0.07)" strokeWidth="1" />
+                  <line x1="24" y1="32" x2="296" y2="32" stroke="rgba(0,0,0,0.07)" strokeWidth="1" />
                   <polyline
                     fill="none"
                     stroke="#2f9e44"
@@ -158,7 +158,7 @@ export default async function EarningsPage() {
                   {chartPoints.map((point) => (
                     <div key={point.date}>
                       <div>{new Date(point.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
-                      <div className="mt-1 font-medium text-white">${point.cumulative.toFixed(2)}</div>
+                      <div className="mt-1 font-medium text-[var(--foreground)]">${point.cumulative.toFixed(2)}</div>
                     </div>
                   ))}
                 </div>
@@ -174,7 +174,7 @@ export default async function EarningsPage() {
 
       <section className="space-y-4">
         <div className="flex items-center justify-between gap-4">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Earnings log</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--foreground)]">Earnings log</h2>
           <span className="text-xs uppercase tracking-[0.16em] text-[var(--foreground-secondary)]">
             Newest first
           </span>
@@ -191,7 +191,7 @@ export default async function EarningsPage() {
                   className="surface-panel grid gap-4 px-4 py-4 sm:grid-cols-[minmax(0,1.3fr)_140px_120px_110px] sm:items-center"
                 >
                   <div>
-                    <div className="text-sm font-medium text-white">
+                    <div className="text-sm font-medium text-[var(--foreground)]">
                       {submission?.tasks?.title ?? 'Task'}
                     </div>
                     <div className="mt-1 text-xs text-[var(--foreground-secondary)]">
@@ -206,7 +206,7 @@ export default async function EarningsPage() {
                       minute: '2-digit',
                     })}
                   </div>
-                  <div className="text-lg font-bold text-white">
+                  <div className="text-lg font-bold text-[var(--foreground)]">
                     ${earning.amount.toFixed(2)}
                   </div>
                   <div>
@@ -220,7 +220,7 @@ export default async function EarningsPage() {
           </div>
         ) : (
           <div className="surface-panel space-y-3 px-6 py-10">
-            <p className="text-base font-medium text-white">No earnings yet</p>
+            <p className="text-base font-medium text-[var(--foreground)]">No earnings yet</p>
             <p className="text-sm leading-6 text-[var(--foreground-secondary)]">
               Once your first approved submission lands, this page will populate with totals, a payout graph, and your earnings ledger.
             </p>
