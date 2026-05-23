@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
   });
   if (dbErr) return json({ error: `recordings: ${dbErr.message}` }, 500);
 
-  const { error: subErr } = await admin.from("submissions").insert({
+  const { data: subData, error: subErr } = await admin.from("submissions").insert({
     task_id: taskId,
     collector_id: user.id, // equals profiles.id
     storage_path: storagePath,
@@ -77,8 +77,21 @@ Deno.serve(async (req) => {
         : null,
       streams,
     },
-  });
+  }).select("id").single();
   if (subErr) return json({ error: `submissions: ${subErr.message}` }, 500);
+
+  // Fire-and-forget: kick off TwelveLabs indexing without blocking the response
+  if (subData?.id) {
+    const indexUrl = `${supabaseUrl}/functions/v1/index-video`;
+    fetch(indexUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ submission_id: subData.id, storage_path: storagePath }),
+    }).catch(() => { /* intentionally ignored */ });
+  }
 
   return json({ ok: true, recording_id: recordingId, streams }, 200);
 });
