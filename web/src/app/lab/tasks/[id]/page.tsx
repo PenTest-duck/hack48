@@ -35,9 +35,6 @@ export default async function LabTaskPage({ params }: { params: Promise<{ id: st
 
   const progress = Math.min(100, (task.quantity_filled / task.quantity_needed) * 100)
   const totalPaid = task.quantity_filled * task.bounty_amount
-  const specifics = (
-    (task.metadata as { specifics?: string[] } | null)?.specifics ?? []
-  ).filter(Boolean)
 
   return (
     <div>
@@ -68,11 +65,6 @@ export default async function LabTaskPage({ params }: { params: Promise<{ id: st
               {(task.required_capabilities as string[]).map((cap: string) => (
                 <span key={cap} className="rounded-full border border-[var(--border)] bg-[rgba(59,91,219,0.12)] px-2 py-0.5 text-xs text-[#aebeff]">
                   {cap}
-                </span>
-              ))}
-              {specifics.map((specific) => (
-                <span key={specific} className="rounded-full border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.08)] px-2 py-0.5 text-xs text-white">
-                  {specific}
                 </span>
               ))}
             </div>

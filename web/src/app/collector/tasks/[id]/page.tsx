@@ -53,10 +53,9 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
   const deepLink = `datamarket://task/${id}`
   const requirements = ((task.required_capabilities as string[] | null) ?? []).filter(Boolean)
   const taskWithMedia = task as typeof task & {
-    metadata?: { reference_assets?: ReferenceAsset[]; specifics?: string[] }
+    metadata?: { reference_assets?: ReferenceAsset[] }
     reference_assets?: ReferenceAsset[]
   }
-  const specifics = (taskWithMedia.metadata?.specifics ?? []).filter(Boolean)
   const referenceAssets: ReferenceAsset[] =
     taskWithMedia.reference_assets ??
     taskWithMedia.metadata?.reference_assets ??
@@ -183,22 +182,6 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
               )}
             </div>
           </section>
-
-          {specifics.length > 0 && (
-            <section className="surface-panel p-6">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Specifics</h2>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {specifics.map((specific: string) => (
-                  <span
-                    key={specific}
-                    className="rounded-full border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.08)] px-3 py-1.5 text-sm font-medium text-white"
-                  >
-                    {specific}
-                  </span>
-                ))}
-              </div>
-            </section>
-          )}
 
           <section className="surface-panel p-6">
             <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Secondary metadata</h2>
