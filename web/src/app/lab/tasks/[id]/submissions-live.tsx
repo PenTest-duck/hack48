@@ -311,7 +311,7 @@ function SubmissionCard({
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token ?? ''}`,
           },
-          body: JSON.stringify({ task_id: tlTaskId }),
+          body: JSON.stringify({ task_id: tlTaskId, submission_id: submission.id }),
         }
       )
       if (res.ok) {
@@ -323,7 +323,7 @@ function SubmissionCard({
     }
   }, [tlTaskId])
 
-  const fetchDescription = useCallback(async (videoId: string) => {
+  const fetchDescription = useCallback(async (storagePath: string) => {
     setLoadingDesc(true)
     setDescError(null)
     try {
@@ -337,7 +337,7 @@ function SubmissionCard({
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token ?? ''}`,
           },
-          body: JSON.stringify({ video_id: videoId }),
+          body: JSON.stringify({ storage_path: storagePath }),
         }
       )
       const data = await res.json()
@@ -477,12 +477,12 @@ function SubmissionCard({
                       task: {tlTaskId}
                     </p>
 
-                    {/* Describe button — only when ready */}
-                    {indexStatus?.status === 'ready' && indexStatus.video_id && (
+                    {/* Describe button — available for any indexed video via Pegasus 1.5 */}
+                    {tlTaskId && (
                       <div className="mt-1">
-                        {!description && !loadingDesc && (
+                        {!description && !loadingDesc && !descError && (
                           <button
-                            onClick={() => fetchDescription(indexStatus.video_id!)}
+                            onClick={() => fetchDescription(submission.storage_path)}
                             className="flex items-center gap-1.5 text-xs text-[#aebeff] hover:text-white transition-colors"
                           >
                             <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
