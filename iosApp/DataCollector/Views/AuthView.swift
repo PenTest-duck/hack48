@@ -58,6 +58,8 @@ struct AuthView: View {
             Spacer()
         }
         .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.appBackground.ignoresSafeArea())
     }
 
     private func submit() {

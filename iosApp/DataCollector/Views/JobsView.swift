@@ -2,7 +2,6 @@ import SwiftUI
 
 /// Browse open jobs. Tap one to record data for it.
 struct JobsView: View {
-    @EnvironmentObject private var auth: AuthManager
     @State private var jobs: [Job] = []
     @State private var loading = true
     @State private var error: String?
@@ -28,14 +27,11 @@ struct JobsView: View {
                             JobRow(job: job)
                         }
                     }
+                    .scrollContentBackground(.hidden)
                 }
             }
             .navigationTitle("Jobs")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Sign Out") { Task { await auth.signOut() } }
-                }
-            }
+            .background(Color.appBackground.ignoresSafeArea())
             .refreshable { await load() }
             .task { await load() }
         }
@@ -63,7 +59,7 @@ private struct JobRow: View {
                 Spacer()
                 if let amount = job.bountyAmount {
                     Text("$\(amount, specifier: "%.0f")")
-                        .font(.headline).foregroundStyle(.green)
+                        .font(.headline).foregroundStyle(Color.appCollector)
                 }
             }
             if let desc = job.description, !desc.isEmpty {
@@ -85,6 +81,6 @@ private struct JobRow: View {
         Text(text)
             .font(.caption2.weight(.medium))
             .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(Color.gray.opacity(0.15), in: Capsule())
+            .background(Color.appBorder, in: Capsule())
     }
 }

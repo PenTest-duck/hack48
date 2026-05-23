@@ -51,3 +51,5 @@ targets:
         # --- Camera app: lock to portrait ---
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
