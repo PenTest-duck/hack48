@@ -25,12 +25,25 @@ export default async function LabTaskPage({ params }: { params: Promise<{ id: st
 
   const submissions = await Promise.all(
     (rawSubmissions ?? []).map(async (s) => {
-      const folder = `${id}/${s.collector_id}`
+      let storagePath = (s.storage_path as string | null) ?? ''
+      if (storagePath.startsWith('recordings/')) {
+        storagePath = storagePath.slice('recordings/'.length)
+      }
+      // iOS stores storage_path as a directory (trailing slash) with video.mp4 inside
+      const isDir = storagePath.endsWith('/')
+      const folder = isDir ? storagePath.slice(0, -1) : storagePath.substring(0, storagePath.lastIndexOf('/'))
+      const videoPath = isDir ? `${storagePath}video.mp4` : storagePath
+
+      console.log('[submission]', { raw: s.storage_path, storagePath, videoPath, folder })
 
       const [videoResult, ...fileResults] = await Promise.all([
-        supabase.storage.from('recordings').createSignedUrl(`${folder}/video.mp4`, 3600),
+        videoPath
+          ? supabase.storage.from('recordings').createSignedUrl(videoPath, 3600)
+          : Promise.resolve({ data: null }),
         ...ADDITIONAL_FILES.map(name =>
-          supabase.storage.from('recordings').createSignedUrl(`${folder}/${name}`, 3600)
+          folder
+            ? supabase.storage.from('recordings').createSignedUrl(`${folder}/${name}`, 3600)
+            : Promise.resolve({ data: null })
         ),
       ])
 

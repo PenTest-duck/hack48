@@ -43,12 +43,23 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
           filter: `task_id=eq.${taskId}`,
         },
         async (payload) => {
-          const folder = `${taskId}/${payload.new.collector_id}`
+          let storagePath = (payload.new.storage_path as string | null) ?? ''
+          if (storagePath.startsWith('recordings/')) {
+            storagePath = storagePath.slice('recordings/'.length)
+          }
+          // iOS stores storage_path as a directory (trailing slash) with video.mp4 inside
+          const isDir = storagePath.endsWith('/')
+          const folder = isDir ? storagePath.slice(0, -1) : storagePath.substring(0, storagePath.lastIndexOf('/'))
+          const videoPath = isDir ? `${storagePath}video.mp4` : storagePath
 
           const [videoResult, ...fileResults] = await Promise.all([
-            supabase.storage.from('recordings').createSignedUrl(`${folder}/video.mp4`, 3600),
+            videoPath
+              ? supabase.storage.from('recordings').createSignedUrl(videoPath, 3600)
+              : Promise.resolve({ data: null }),
             ...ADDITIONAL_FILES.map(name =>
-              supabase.storage.from('recordings').createSignedUrl(`${folder}/${name}`, 3600)
+              folder
+                ? supabase.storage.from('recordings').createSignedUrl(`${folder}/${name}`, 3600)
+                : Promise.resolve({ data: null })
             ),
           ])
 
@@ -209,8 +220,17 @@ function SubmissionCard({
               </div>
             )}
 
-            {availableFiles.length > 0 && (
+            {(submission.signedUrl || availableFiles.length > 0) && (
               <div className="mt-3 flex flex-wrap gap-2">
+                {submission.signedUrl && (
+                  <a
+                    href={submission.signedUrl}
+                    download="video.mp4"
+                    className="rounded border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-1 text-xs text-[var(--foreground-secondary)] transition-colors hover:text-[var(--foreground)]"
+                  >
+                    ↓ video.mp4
+                  </a>
+                )}
                 {availableFiles.map(name => (
                   <a
                     key={name}
