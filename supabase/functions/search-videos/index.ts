@@ -1,5 +1,5 @@
 // Edge Function: search-videos
-// Calls TwelveLabs search API with a natural language query and returns matching results.
+// Calls TwelveLabs search API with a natural language query and returns matching submissions.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const cors = {
@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
 
   const taskId = body.task_id ? String(body.task_id) : null;
 
-  // Search TwelveLabs
+  // Search TwelveLabs — returns clips; we'll deduplicate to unique parent videos below
   const tlRes = await fetch("https://api.twelvelabs.io/v1.3/search", {
     method: "POST",
     headers: {
@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
       index_id: tlIndexId,
       query_text: query,
       search_options: ["visual", "audio"],
-      threshold: "medium",
+      threshold: "low",
     }),
   });
 
@@ -57,37 +57,71 @@ Deno.serve(async (req) => {
     return json({ results: [] }, 200);
   }
 
-  // Map TwelveLabs video IDs back to submission IDs via metadata.twelvelabs_task_id
-  // TwelveLabs video_id corresponds to the completed video id, but we stored the task_id.
-  // We match submissions whose metadata contains these twelvelabs_task_ids or video_ids.
   const admin = createClient(supabaseUrl, serviceKey);
 
-  // Collect unique video IDs from hits
-  const videoIds = [...new Set(hits.map(h => h.video_id))];
+  // Collect unique TwelveLabs video IDs across all clips
+  const tlVideoIds = [...new Set(hits.map(h => h.video_id))];
 
-  // Fetch all submissions for this task (if task_id provided) or globally
+  // Fetch all submissions (optionally filtered to a task)
   let submissionsQuery = admin
     .from("submissions")
     .select("id, collector_id, storage_path, status, metadata, created_at");
-
   if (taskId) {
     submissionsQuery = submissionsQuery.eq("task_id", taskId);
   }
-
   const { data: submissions, error: dbErr } = await submissionsQuery;
   if (dbErr) return json({ error: `DB error: ${dbErr.message}` }, 500);
 
-  // Build a map from twelvelabs video/task id → submission
+  // Build lookup: stored TL video_id or task_id → submission
   const submissionByTlId = new Map<string, typeof submissions[0]>();
   for (const sub of submissions ?? []) {
     const meta = sub.metadata as Record<string, unknown> | null;
-    const tlTaskId = meta?.twelvelabs_task_id as string | undefined;
-    const tlVideoId = meta?.twelvelabs_video_id as string | undefined;
-    if (tlTaskId) submissionByTlId.set(tlTaskId, sub);
-    if (tlVideoId) submissionByTlId.set(tlVideoId, sub);
+    const storedTaskId = meta?.twelvelabs_task_id as string | undefined;
+    const storedVideoId = meta?.twelvelabs_video_id as string | undefined;
+    if (storedTaskId) submissionByTlId.set(storedTaskId, sub);
+    if (storedVideoId) submissionByTlId.set(storedVideoId, sub);
   }
 
-  // Join hits with submissions; deduplicate by submission id, keeping best score
+  // Find TL video_ids that didn't match any submission via stored metadata
+  const unmatchedVideoIds = tlVideoIds.filter(vid => !submissionByTlId.has(vid));
+
+  // For unmatched video_ids: find submissions with a task_id but no video_id stored,
+  // then call TwelveLabs to resolve task → video_id on the fly and persist for future calls.
+  if (unmatchedVideoIds.length > 0) {
+    const needsResolution = (submissions ?? []).filter(sub => {
+      const meta = sub.metadata as Record<string, unknown> | null;
+      return meta?.twelvelabs_task_id && !meta?.twelvelabs_video_id;
+    });
+
+    await Promise.all(
+      needsResolution.map(async (sub) => {
+        const meta = sub.metadata as Record<string, unknown>;
+        const tlTaskId = meta.twelvelabs_task_id as string;
+        try {
+          const taskRes = await fetch(`https://api.twelvelabs.io/v1.3/tasks/${tlTaskId}`, {
+            headers: { "x-api-key": tlApiKey },
+          });
+          if (!taskRes.ok) return;
+          const taskData = await taskRes.json();
+          const resolvedVideoId = taskData.video_id as string | null;
+          if (!resolvedVideoId) return;
+
+          // Register in our lookup
+          submissionByTlId.set(resolvedVideoId, sub);
+
+          // Persist so future searches don't need to re-resolve
+          await admin
+            .from("submissions")
+            .update({ metadata: { ...meta, twelvelabs_video_id: resolvedVideoId } })
+            .eq("id", sub.id);
+        } catch {
+          // Non-fatal — just skip this submission
+        }
+      })
+    );
+  }
+
+  // Deduplicate clips → unique submissions, keeping best score per submission
   const bestBySubmission = new Map<string, { submission: typeof submissions[0]; score: number }>();
   for (const hit of hits) {
     const sub = submissionByTlId.get(hit.video_id);
@@ -98,7 +132,22 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Generate signed URLs for matched submissions
+  // Debug: always include raw TL hit info so we can diagnose mismatches
+  const debug = {
+    tlVideoIds,
+    submissionMetadata: (submissions ?? []).map(s => ({
+      id: s.id,
+      twelvelabs_task_id: (s.metadata as Record<string,unknown>|null)?.twelvelabs_task_id ?? null,
+      twelvelabs_video_id: (s.metadata as Record<string,unknown>|null)?.twelvelabs_video_id ?? null,
+    })),
+    matched: [...bestBySubmission.keys()],
+  };
+
+  if (!bestBySubmission.size) {
+    return json({ results: [], debug }, 200);
+  }
+
+  // Generate signed URLs for matched submissions, sorted by best score
   const results = await Promise.all(
     [...bestBySubmission.values()]
       .sort((a, b) => b.score - a.score)

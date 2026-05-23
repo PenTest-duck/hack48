@@ -38,19 +38,7 @@ Deno.serve(async (req) => {
     return json({ error: `Failed to create signed URL: ${signedUrlErr?.message}` }, 500);
   }
 
-  // Pegasus 1.5: stream video from Supabase, upload to TwelveLabs as base64 file
-  const videoFetch = await fetch(signedUrlData.signedUrl);
-  if (!videoFetch.ok) {
-    return json({ error: `Failed to fetch video from storage (${videoFetch.status})` }, 500);
-  }
-  const videoBytes = new Uint8Array(await videoFetch.arrayBuffer());
-  let binary = '';
-  const chunkSize = 0x8000;
-  for (let i = 0; i < videoBytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...videoBytes.subarray(i, i + chunkSize));
-  }
-  const videoB64 = btoa(binary);
-
+  // Pegasus 1.5: pass the signed URL directly — avoids base64 payload size limits
   const res = await fetch("https://api.twelvelabs.io/v1.3/analyze", {
     method: "POST",
     headers: {
@@ -58,7 +46,7 @@ Deno.serve(async (req) => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      video: { type: "base64_string", base64_string: videoB64 },
+      video: { type: "url", url: signedUrlData.signedUrl },
       prompt: "Describe the key visual content and any sounds or speech in this video in 2-3 sentences. Be specific about objects, actions, settings, and people visible.",
     }),
   });
