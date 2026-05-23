@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import math
 import time
 from pathlib import Path
@@ -23,6 +24,13 @@ from mediapipe_so101.types import FilterResult, FreezeReason, RobotTargets
 
 
 WINDOW_NAME = "MediaPipe SO101 Wrist Teleop"
+
+
+@dataclass
+class LoopState:
+    sync_enabled: bool = False
+    notice: str | None = None
+    send_failed: bool = False
 
 
 def parse_args() -> argparse.Namespace:
@@ -212,7 +220,7 @@ def run_loop(args, capture, landmarker, latest, mapper, target_filter, backend) 
     previous_timestamp_ms = -1
     previous_frame_time = start_time
     fps_display = 0.0
-    sync_enabled = False
+    state = LoopState()
     last_deadman_ms = -1
     last_result = FilterResult(
         target_filter.last_targets,
@@ -240,18 +248,30 @@ def run_loop(args, capture, landmarker, latest, mapper, target_filter, backend) 
         if key in (27, ord("q")):
             break
         if key == ord(" "):
-            sync_enabled = not sync_enabled
-        if key == ord("n") and sample is not None:
-            try:
-                mapper.capture_neutral(sample, backend.baseline_targets)
-                target_filter = TargetFilter(target_filter.config, backend.baseline_targets)
-            except ValueError:
-                pass
+            state.sync_enabled = not state.sync_enabled
+            if state.sync_enabled:
+                state.notice = None
+        if key == ord("n"):
+            target_filter = handle_neutral_capture(
+                sample=sample,
+                now_ms=timestamp_ms,
+                mapper=mapper,
+                target_filter=target_filter,
+                baseline_targets=backend.baseline_targets,
+                min_hand_confidence=args.min_hand_confidence,
+                stale_timeout_ms=target_filter.config.stale_timeout_ms,
+                state=state,
+            )
         if args.deadman_key and key == ord(args.deadman_key):
             last_deadman_ms = timestamp_ms
 
         deadman_active = not args.deadman_key or timestamp_ms - last_deadman_ms <= args.deadman_grace_ms
-        tracking_ok = sample is not None and sample.confidence >= args.min_hand_confidence
+        tracking_ok = sample_is_usable(
+            sample,
+            now_ms=timestamp_ms,
+            min_hand_confidence=args.min_hand_confidence,
+            stale_timeout_ms=target_filter.config.stale_timeout_ms,
+        )
         desired = target_filter.last_targets
         if sample is not None and mapper.neutral_ready:
             try:
@@ -265,7 +285,7 @@ def run_loop(args, capture, landmarker, latest, mapper, target_filter, backend) 
                 desired,
                 now_ms=timestamp_ms,
                 sample_timestamp_ms=sample_timestamp_ms,
-                sync_enabled=sync_enabled,
+                sync_enabled=state.sync_enabled,
                 neutral_ready=mapper.neutral_ready,
                 deadman_active=deadman_active,
                 tracking_ok=tracking_ok,
@@ -277,17 +297,7 @@ def run_loop(args, capture, landmarker, latest, mapper, target_filter, backend) 
                 clamped_keys=(),
                 reason=FreezeReason.TRACKING_LOST,
             )
-        if not last_result.frozen:
-            try:
-                backend.send(last_result.targets)
-            except ValueError:
-                sync_enabled = False
-                last_result = FilterResult(
-                    target_filter.last_targets,
-                    frozen=True,
-                    clamped_keys=(),
-                    reason=FreezeReason.PAUSED,
-                )
+        last_result = handle_backend_send(backend, last_result, target_filter, state)
 
         now = time.monotonic()
         instantaneous_fps = 1.0 / max(now - previous_frame_time, 1e-6)
@@ -295,7 +305,7 @@ def run_loop(args, capture, landmarker, latest, mapper, target_filter, backend) 
         previous_frame_time = now
 
         draw_sample(frame, sample)
-        draw_status(frame, args, fps_display, sync_enabled, mapper.neutral_ready, sample, last_result)
+        draw_status(frame, args, fps_display, state.sync_enabled, mapper.neutral_ready, sample, last_result, state.notice)
         cv2.imshow(WINDOW_NAME, frame)
 
         elapsed = time.monotonic() - loop_start
@@ -304,7 +314,103 @@ def run_loop(args, capture, landmarker, latest, mapper, target_filter, backend) 
             time.sleep(sleep_s)
 
 
-def draw_status(frame, args, fps_display, sync_enabled, neutral_ready, sample, result: FilterResult) -> None:
+def sample_is_usable(
+    sample,
+    *,
+    now_ms: int,
+    min_hand_confidence: float,
+    stale_timeout_ms: int,
+) -> bool:
+    return neutral_rejection_reason(
+        sample,
+        now_ms=now_ms,
+        min_hand_confidence=min_hand_confidence,
+        stale_timeout_ms=stale_timeout_ms,
+    ) is None
+
+
+def neutral_rejection_reason(
+    sample,
+    *,
+    now_ms: int,
+    min_hand_confidence: float,
+    stale_timeout_ms: int,
+) -> FreezeReason | None:
+    if sample is None:
+        return FreezeReason.TRACKING_LOST
+    if sample.confidence < min_hand_confidence:
+        return FreezeReason.TRACKING_LOST
+    if now_ms - sample.timestamp_ms > stale_timeout_ms:
+        return FreezeReason.STALE_RESULT
+    return None
+
+
+def handle_neutral_capture(
+    *,
+    sample,
+    now_ms: int,
+    mapper,
+    target_filter: TargetFilter,
+    baseline_targets: RobotTargets,
+    min_hand_confidence: float,
+    stale_timeout_ms: int,
+    state: LoopState,
+) -> TargetFilter:
+    reason = neutral_rejection_reason(
+        sample,
+        now_ms=now_ms,
+        min_hand_confidence=min_hand_confidence,
+        stale_timeout_ms=stale_timeout_ms,
+    )
+    if reason is not None:
+        state.notice = f"neutral rejected: {reason.value}"
+        return target_filter
+
+    try:
+        mapper.capture_neutral(sample, baseline_targets)
+        state.notice = "neutral captured"
+        return TargetFilter(target_filter.config, baseline_targets)
+    except ValueError as exc:
+        state.notice = f"neutral rejected: {exc}"
+        return target_filter
+
+
+def handle_backend_send(backend, result: FilterResult, target_filter: TargetFilter, state: LoopState) -> FilterResult:
+    if state.send_failed:
+        return FilterResult(
+            target_filter.last_targets,
+            frozen=True,
+            clamped_keys=(),
+            reason=FreezeReason.PAUSED,
+        )
+    if result.frozen:
+        return result
+
+    try:
+        backend.send(result.targets)
+        return result
+    except Exception as exc:
+        state.sync_enabled = False
+        state.send_failed = True
+        state.notice = f"send failed: {exc}"
+        return FilterResult(
+            target_filter.last_targets,
+            frozen=True,
+            clamped_keys=(),
+            reason=FreezeReason.PAUSED,
+        )
+
+
+def draw_status(
+    frame,
+    args,
+    fps_display,
+    sync_enabled,
+    neutral_ready,
+    sample,
+    result: FilterResult,
+    notice: str | None = None,
+) -> None:
     robot_state = "ROBOT" if args.enable_robot else "DRY"
     hand_state = "none" if sample is None else f"{sample.handedness} {sample.confidence:.2f}"
     clamp_text = ",".join(result.clamped_keys) if result.clamped_keys else "none"
@@ -314,6 +420,8 @@ def draw_status(frame, args, fps_display, sync_enabled, neutral_ready, sample, r
         f"reason={result.reason.value} | clamp={clamp_text} | "
         f"flex={result.targets.wrist_flex:.1f} roll={result.targets.wrist_roll:.1f} grip={result.targets.gripper:.1f}"
     )
+    if notice:
+        status = f"{status} | notice={notice}"
     cv2.putText(frame, status, (12, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (20, 20, 20), 4, cv2.LINE_AA)
     cv2.putText(frame, status, (12, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (255, 255, 255), 2, cv2.LINE_AA)
 
