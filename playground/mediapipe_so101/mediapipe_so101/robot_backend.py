@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from pathlib import Path
 from typing import Callable, Protocol
 
@@ -37,6 +38,7 @@ class DryRunBackend:
         return None
 
     def send(self, targets: RobotTargets) -> dict[str, float]:
+        _validate_targets_are_finite(targets)
         self.last_action = targets.as_action()
         return self.last_action
 
@@ -56,10 +58,10 @@ class SO101Backend:
     def __init__(
         self,
         config: SO101BackendConfig,
-        robot_factory: Callable[[object], RobotLike] | None = None,
+        robot_factory: Callable[[SO101BackendConfig], RobotLike] | None = None,
     ) -> None:
         self.config = config
-        self._robot_factory = robot_factory or _make_so101_robot
+        self._robot_factory = robot_factory
         self._robot: RobotLike | None = None
         self._startup_action: dict[str, float] | None = None
         self._baseline = RobotTargets(0.0, 0.0, 50.0)
@@ -73,22 +75,31 @@ class SO101Backend:
         if not calibration_file.exists():
             raise FileNotFoundError(f"SO101 calibration file not found: {calibration_file}")
 
-        robot_config = _make_so101_config(self.config)
-        robot = self._robot_factory(robot_config)
-        robot.connect()
-        observation = robot.get_observation()
-        self._startup_action = _extract_action(observation)
-        self._baseline = RobotTargets(
-            wrist_flex=self._startup_action["wrist_flex.pos"],
-            wrist_roll=self._startup_action["wrist_roll.pos"],
-            gripper=self._startup_action["gripper.pos"],
+        robot = (
+            self._robot_factory(self.config)
+            if self._robot_factory is not None
+            else _make_so101_robot(_make_so101_config(self.config))
         )
-        self._robot = robot
+        _validate_action_features(robot)
+        robot.connect()
+        try:
+            observation = robot.get_observation()
+            self._startup_action = _extract_action(observation)
+            self._baseline = RobotTargets(
+                wrist_flex=self._startup_action["wrist_flex.pos"],
+                wrist_roll=self._startup_action["wrist_roll.pos"],
+                gripper=self._startup_action["gripper.pos"],
+            )
+            self._robot = robot
+        except Exception:
+            robot.disconnect()
+            raise
 
     def send(self, targets: RobotTargets) -> dict[str, float]:
         if self._robot is None or self._startup_action is None:
             raise RuntimeError("SO101Backend is not connected")
 
+        _validate_targets_are_finite(targets)
         action = dict(self._startup_action)
         action.update(targets.as_action())
         return self._robot.send_action(action)
@@ -104,10 +115,27 @@ def _extract_action(observation: dict[str, float]) -> dict[str, float]:
     if missing:
         raise KeyError(f"Robot observation missing action keys: {sorted(missing)}")
     action = {key: float(observation[key]) for key in ACTION_KEYS}
+    _validate_action_values_are_finite(action)
     missing_held = set(HELD_KEYS) - set(action)
     if missing_held:
         raise KeyError(f"Robot observation missing held joints: {sorted(missing_held)}")
     return action
+
+
+def _validate_targets_are_finite(targets: RobotTargets) -> None:
+    _validate_action_values_are_finite(targets.as_action())
+
+
+def _validate_action_values_are_finite(action: dict[str, float]) -> None:
+    non_finite = [key for key, value in action.items() if not math.isfinite(value)]
+    if non_finite:
+        raise ValueError(f"Robot action contains non-finite values: {non_finite}")
+
+
+def _validate_action_features(robot: RobotLike) -> None:
+    missing = set(ACTION_KEYS) - set(robot.action_features)
+    if missing:
+        raise KeyError(f"Robot action features missing keys: {sorted(missing)}")
 
 
 def _make_so101_config(config: SO101BackendConfig) -> object:
