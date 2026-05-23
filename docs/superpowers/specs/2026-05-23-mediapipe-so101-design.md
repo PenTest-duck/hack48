@@ -24,11 +24,11 @@ This prototype will not implement full-arm teleoperation, inverse kinematics, da
 
 The script starts in a paused state. It opens the camera, runs MediaPipe hand tracking, and displays or logs the detected hand state. No robot commands are emitted until a neutral pose has been captured.
 
-The user presses `n` to capture neutral. Neutral stores both the current hand-pose baseline and, in robot mode, the current robot wrist/gripper baseline. After neutral capture, the mapper converts hand-pose deltas into robot targets.
+The user presses `n` to capture neutral. Neutral stores the current hand-pose baseline for wrist deltas and, in robot mode, the current robot wrist/gripper targets for initial filter state and held-joint startup posture. The gripper command is not neutral-relative: it remains an absolute mapping from current pinch openness to the configured gripper closed/open targets.
 
 The user presses `space` to toggle sync on or off. In dry-run mode, sync means target values are updated in the display or terminal. In robot mode, sync means filtered targets are sent to the SO101 follower at the configured control rate.
 
-An optional `--deadman-key` mode requires an active key hold before commands flow. This is in addition to the sync toggle. The default interaction remains toggle-based because it is easier for one-person testing, while the deadman mode is available for more cautious physical runs.
+An optional `--deadman-key` mode requires recent key activity before commands flow. This is in addition to the sync toggle. The default interaction remains toggle-based because it is easier for one-person testing, while the deadman mode is available for more cautious physical runs.
 
 The `q` key exits cleanly. Exit, keyboard interrupt, camera failure, or robot connection failure must leave the robot disconnected through LeRobot's normal cleanup path.
 
@@ -55,8 +55,8 @@ Each frame follows this path:
 3. The latest result is selected if it is recent enough and has adequate confidence.
 4. One controlling hand is chosen, defaulting to the highest-confidence hand.
 5. If neutral has not been captured, status is updated but no target is emitted.
-6. After neutral capture, hand features are computed relative to the neutral hand pose.
-7. Relative hand features are mapped to `wrist_flex`, `wrist_roll`, and `gripper` targets.
+6. After neutral capture, wrist hand features are computed relative to the neutral hand pose.
+7. Relative wrist features and absolute pinch openness are mapped to `wrist_flex`, `wrist_roll`, and `gripper` targets.
 8. The safety filter applies smoothing, clamps, and per-frame movement limits.
 9. The dry-run backend displays targets, or the robot backend sends the filtered action to `SO101Follower.send_action`.
 
@@ -66,7 +66,7 @@ The mapping should be intentionally transparent and tunable.
 
 `wrist_roll.pos` is driven by palm left-right tilt relative to neutral. `wrist_flex.pos` is driven by a pitch-like hand feature relative to neutral, such as the relationship between wrist, index MCP, and middle-finger landmarks. Exact landmark formulas can be adjusted during implementation, but they must be deterministic and documented in code.
 
-`gripper.pos` is driven by continuous pinch openness. Thumb-tip to index-tip distance is normalized against a hand-size estimate so the same gesture works at different distances from the camera. A full pinch maps to closed gripper. Open fingers map to open gripper. Intermediate pinch distance maps continuously between those states.
+`gripper.pos` is driven by continuous absolute pinch openness. Thumb-tip to index-tip distance is normalized against a hand-size estimate so the same gesture works at different distances from the camera. A full pinch maps to closed gripper. Open fingers map to open gripper. Intermediate pinch distance maps continuously between those states. Capturing neutral does not offset this gripper mapping; before enabling sync, the operator should hold a pinch state that matches the intended gripper target.
 
 The mapper outputs desired targets in the same normalized position space used by LeRobot for the SO101 follower. Gains, clamps, smoothing coefficient, FPS, stale timeout, hand selection, and gripper open/closed calibration values should be CLI flags or a small config object so they can be tuned without changing mapping code.
 
@@ -104,7 +104,7 @@ Required safety behavior:
 - Optional deadman key mode.
 - Controlled joints limited to wrist flex, wrist roll, and gripper.
 - Non-controlled joints held at startup positions.
-- Conservative hard clamps around startup wrist/gripper positions.
+- Conservative hard clamps around startup wrist positions and configured gripper bounds, with LeRobot's relative target guard also enabled in robot mode.
 - Per-frame max delta limit per controlled joint.
 - Exponential smoothing on targets or landmark-derived features.
 - Freeze output when hand tracking is lost, stale, or below confidence.
@@ -120,7 +120,7 @@ The exact names can be refined during implementation, but the CLI should support
 - `--enable-robot`: opt into physical robot commands.
 - `--robot-port`, `--robot-id`, `--calibration-dir`: SO101 follower connection.
 - `--fps`: control-loop rate cap.
-- `--deadman-key`: require a key hold for command output.
+- `--deadman-key`: require recent key activity for command output.
 - `--wrist-flex-gain`, `--wrist-roll-gain`: mapping gains.
 - `--gripper-open`, `--gripper-closed`: gripper target calibration.
 - `--max-delta`: per-frame target movement limit.

@@ -76,6 +76,8 @@ uv run python main.py \
 - Full pinch means closed gripper.
 - Open fingers mean open gripper.
 
+Neutral capture affects wrist deltas only. The gripper command is absolute from current pinch openness, so when sync turns on the gripper will move toward the current pinch target rather than preserving the startup gripper position.
+
 ## Model Cache
 
 The MediaPipe hand landmarker model is downloaded on first use and cached in `models/`. The cached `.task` and temporary download files are ignored by git.
@@ -83,5 +85,7 @@ The MediaPipe hand landmarker model is downloaded on first use and cached in `mo
 ## Safety Notes
 
 This has a narrower command surface than full-arm teleoperation because it only commands wrist flex, wrist roll, and gripper. It is still physical robot motion. Keep the wrist clear of the table and cables, keep fingers out of the gripper, start with low FPS and small limits, and press `space` or `q` if motion is unexpected.
+
+Before enabling sync, hold a pinch state that matches the desired gripper position. Tune `--gripper-open`, `--gripper-closed`, `--gripper-min`, `--gripper-max`, and `--max-delta` conservatively for the first physical run.
 
 The script freezes command output when tracking is missing, stale, below confidence, paused, the deadman key is inactive, or neutral has not been captured. A backend send failure disables sync and locks command output off until restart.
