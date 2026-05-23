@@ -248,9 +248,7 @@ def run_loop(args, capture, landmarker, latest, mapper, target_filter, backend) 
         if key in (27, ord("q")):
             break
         if key == ord(" "):
-            state.sync_enabled = not state.sync_enabled
-            if state.sync_enabled:
-                state.notice = None
+            handle_sync_toggle(state)
         if key == ord("n"):
             target_filter = handle_neutral_capture(
                 sample=sample,
@@ -343,6 +341,17 @@ def neutral_rejection_reason(
     if now_ms - sample.timestamp_ms > stale_timeout_ms:
         return FreezeReason.STALE_RESULT
     return None
+
+
+def handle_sync_toggle(state: LoopState) -> None:
+    if state.send_failed:
+        state.sync_enabled = False
+        state.notice = "sync locked off: send failed"
+        return
+
+    state.sync_enabled = not state.sync_enabled
+    if state.sync_enabled:
+        state.notice = None
 
 
 def handle_neutral_capture(

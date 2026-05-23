@@ -4,6 +4,7 @@ from main import (
     LoopState,
     handle_backend_send,
     handle_neutral_capture,
+    handle_sync_toggle,
     neutral_rejection_reason,
     sample_is_usable,
 )
@@ -74,6 +75,48 @@ def test_neutral_capture_rejects_stale_sample_without_capturing() -> None:
     assert state.notice == "neutral rejected: stale_result"
 
 
+def test_neutral_capture_rejects_low_confidence_sample_without_capturing() -> None:
+    mapper = PoseMapper(MappingConfig())
+    target_filter = make_filter()
+    state = LoopState()
+
+    returned_filter = handle_neutral_capture(
+        sample=make_sample(confidence=0.44, timestamp_ms=100),
+        now_ms=100,
+        mapper=mapper,
+        target_filter=target_filter,
+        baseline_targets=RobotTargets(0.0, 0.0, 50.0),
+        min_hand_confidence=0.45,
+        stale_timeout_ms=150,
+        state=state,
+    )
+
+    assert returned_filter is target_filter
+    assert not mapper.neutral_ready
+    assert state.notice == "neutral rejected: tracking_lost"
+
+
+def test_neutral_capture_rejects_missing_sample_without_capturing() -> None:
+    mapper = PoseMapper(MappingConfig())
+    target_filter = make_filter()
+    state = LoopState()
+
+    returned_filter = handle_neutral_capture(
+        sample=None,
+        now_ms=100,
+        mapper=mapper,
+        target_filter=target_filter,
+        baseline_targets=RobotTargets(0.0, 0.0, 50.0),
+        min_hand_confidence=0.45,
+        stale_timeout_ms=150,
+        state=state,
+    )
+
+    assert returned_filter is target_filter
+    assert not mapper.neutral_ready
+    assert state.notice == "neutral rejected: tracking_lost"
+
+
 def test_neutral_capture_rejects_mapper_validation_failure_with_notice() -> None:
     mapper = PoseMapper(MappingConfig())
     target_filter = make_filter()
@@ -131,3 +174,12 @@ def test_backend_send_exception_disables_sync_and_suppresses_repeated_sends() ->
     assert second_result.frozen
     assert first_result.reason is FreezeReason.PAUSED
     assert second_result.reason is FreezeReason.PAUSED
+
+
+def test_sync_toggle_stays_disabled_after_send_failure() -> None:
+    state = LoopState(sync_enabled=False, notice="send failed: serial write failed", send_failed=True)
+
+    handle_sync_toggle(state)
+
+    assert not state.sync_enabled
+    assert state.notice == "sync locked off: send failed"
