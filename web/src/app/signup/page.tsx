@@ -1,25 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { useActionState, useState } from 'react'
 import { signUp } from '@/app/actions/auth'
 import Link from 'next/link'
 
-export default function SignupPage() {
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [role, setRole] = useState<'lab' | 'collector' | null>(null)
+const isSupabaseConfigured = Boolean(
+  process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    if (!role) return
-    setLoading(true)
-    setError(null)
-    const result = await signUp(new FormData(e.currentTarget))
-    if (result?.error) {
-      setError(result.error)
-      setLoading(false)
-    }
-  }
+export default function SignupPage() {
+  const [state, formAction, pending] = useActionState(signUp, {
+    error: null,
+    message: null,
+  })
+  const [role, setRole] = useState<'lab' | 'collector' | null>(null)
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -29,7 +24,7 @@ export default function SignupPage() {
           <p className="text-gray-500 text-sm mt-1">Join the data marketplace</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form action={formAction} className="space-y-4">
           {/* Role selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">I am a...</label>
@@ -100,16 +95,26 @@ export default function SignupPage() {
             />
           </div>
 
-          {error && (
-            <p className="text-red-500 text-sm">{error}</p>
+          {state.error && (
+            <p className="text-red-500 text-sm">{state.error}</p>
+          )}
+
+          {state.message && (
+            <p className="text-green-600 text-sm">{state.message}</p>
+          )}
+
+          {!isSupabaseConfigured && (
+            <p className="text-red-500 text-sm">
+              Supabase is not configured for this local server.
+            </p>
           )}
 
           <button
             type="submit"
-            disabled={loading || !role}
+            disabled={pending || !role || !isSupabaseConfigured}
             className="w-full bg-black text-white rounded-lg py-2 text-sm font-medium hover:bg-gray-800 disabled:opacity-40 transition-colors"
           >
-            {loading ? 'Creating account...' : 'Create account'}
+            {pending ? 'Creating account...' : 'Create account'}
           </button>
         </form>
 

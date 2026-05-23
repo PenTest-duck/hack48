@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { signOut } from '@/app/actions/auth'
 import ToastContainer from '@/components/toast'
+import Link from 'next/link'
 
 export default async function LabLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -23,8 +24,8 @@ export default async function LabLayout({ children }: { children: React.ReactNod
         <div className="flex items-center gap-4 sm:gap-6">
           <span className="font-bold text-gray-900">DataMarket</span>
           <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">Lab</span>
-          <a href="/lab/dashboard" className="text-sm text-gray-600 hover:text-gray-900 hidden sm:inline">Dashboard</a>
-          <a href="/lab/tasks/new" className="text-sm text-gray-600 hover:text-gray-900 hidden sm:inline">New Task</a>
+          <Link href="/lab/dashboard" className="text-sm text-gray-600 hover:text-gray-900 hidden sm:inline">Dashboard</Link>
+          <Link href="/lab/tasks/new" className="text-sm text-gray-600 hover:text-gray-900 hidden sm:inline">New Task</Link>
         </div>
         <div className="flex items-center gap-3 sm:gap-4">
           <span className="text-sm text-gray-500 hidden sm:inline">{profile?.display_name}</span>

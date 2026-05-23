@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { signOut } from '@/app/actions/auth'
+import Link from 'next/link'
 
 export default async function CollectorLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -22,8 +23,8 @@ export default async function CollectorLayout({ children }: { children: React.Re
         <div className="flex items-center gap-4 sm:gap-6">
           <span className="font-bold text-gray-900">DataMarket</span>
           <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Collector</span>
-          <a href="/collector/tasks" className="text-sm text-gray-600 hover:text-gray-900">Tasks</a>
-          <a href="/collector/earnings" className="text-sm text-gray-600 hover:text-gray-900">Earnings</a>
+          <Link href="/collector/tasks" className="text-sm text-gray-600 hover:text-gray-900">Tasks</Link>
+          <Link href="/collector/earnings" className="text-sm text-gray-600 hover:text-gray-900">Earnings</Link>
         </div>
         <div className="flex items-center gap-3 sm:gap-4">
           <span className="text-sm text-gray-500 hidden sm:inline">{profile?.display_name}</span>

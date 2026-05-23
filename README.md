@@ -1,20 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This repo is structured as a small monorepo:
+
+- `web/` contains the Next.js app
+- `ios/` is reserved for the future iOS app
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies for the web app:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd web
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then run the development server:
+
+```bash
+cd web
+npm run dev
+```
+
+The `web` app's `dev` script is workspace-aware when used inside Conductor:
+
+- It reuses a shared `.env.local` from the workspace group's `.shared` directory when available.
+- It assigns each workspace a stable localhost port and stores that mapping in `.shared/workspace-ports.json`.
+- It prints the exact URL it chose before starting Next.js.
+
+If you need plain Next.js behavior, run:
+
+```bash
+cd web
+npm run dev:next
+```
+
+Open the printed `http://localhost:<port>` URL with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

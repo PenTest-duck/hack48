@@ -1,23 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useActionState } from 'react'
 import { signIn } from '@/app/actions/auth'
 import Link from 'next/link'
 
-export default function LoginPage() {
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+const isSupabaseConfigured = Boolean(
+  process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    const result = await signIn(new FormData(e.currentTarget))
-    if (result?.error) {
-      setError(result.error)
-      setLoading(false)
-    }
-  }
+export default function LoginPage() {
+  const [state, formAction, pending] = useActionState(signIn, {
+    error: null,
+    message: null,
+  })
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -27,7 +23,7 @@ export default function LoginPage() {
           <p className="text-gray-500 text-sm mt-1">Sign in to your account</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form action={formAction} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
             <input
@@ -47,16 +43,22 @@ export default function LoginPage() {
             />
           </div>
 
-          {error && (
-            <p className="text-red-500 text-sm">{error}</p>
+          {state.error && (
+            <p className="text-red-500 text-sm">{state.error}</p>
+          )}
+
+          {!isSupabaseConfigured && (
+            <p className="text-red-500 text-sm">
+              Supabase is not configured for this local server.
+            </p>
           )}
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={pending || !isSupabaseConfigured}
             className="w-full bg-black text-white rounded-lg py-2 text-sm font-medium hover:bg-gray-800 disabled:opacity-50 transition-colors"
           >
-            {loading ? 'Signing in...' : 'Sign in'}
+            {pending ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
 
