@@ -10,6 +10,7 @@ from main import (
     handle_backend_send,
     handle_neutral_capture,
     handle_sync_toggle,
+    make_safety_config,
     neutral_rejection_reason,
     sample_is_usable,
     validate_args,
@@ -112,6 +113,16 @@ def test_validate_args_allows_matching_usb_serial_and_robot_id(tmp_path: Path) -
     )
 
     validate_args(args)
+
+
+def test_safety_config_allows_startup_gripper_outside_requested_motion_bounds() -> None:
+    args = valid_args(gripper_min=15.0, gripper_max=85.0)
+    startup_targets = RobotTargets(wrist_flex=0.0, wrist_roll=0.0, gripper=1.02)
+
+    target_filter = TargetFilter(make_safety_config(args, startup_targets), startup_targets)
+
+    assert target_filter.last_targets == startup_targets
+    assert target_filter.config.limits["gripper.pos"] == (1.02, 85.0)
 
 
 def test_neutral_rejection_reason_rejects_low_confidence_sample() -> None:

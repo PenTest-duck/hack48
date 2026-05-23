@@ -223,6 +223,9 @@ def make_backend(args: argparse.Namespace):
 
 
 def make_safety_config(args: argparse.Namespace, baseline: RobotTargets) -> SafetyConfig:
+    if args.gripper_min >= args.gripper_max:
+        raise ValueError("--gripper-min must be less than --gripper-max")
+
     return SafetyConfig(
         limits={
             "wrist_flex.pos": (
@@ -233,7 +236,10 @@ def make_safety_config(args: argparse.Namespace, baseline: RobotTargets) -> Safe
                 baseline.wrist_roll - args.wrist_roll_limit,
                 baseline.wrist_roll + args.wrist_roll_limit,
             ),
-            "gripper.pos": (args.gripper_min, args.gripper_max),
+            "gripper.pos": (
+                min(args.gripper_min, baseline.gripper),
+                max(args.gripper_max, baseline.gripper),
+            ),
         },
         max_delta={
             "wrist_flex.pos": args.max_delta,
