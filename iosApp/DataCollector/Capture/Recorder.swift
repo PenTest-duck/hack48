@@ -27,7 +27,7 @@ final class Recorder: NSObject, ObservableObject {
     private var videoInput: AVAssetWriterInput?
     private var pixelAdaptor: AVAssetWriterInputPixelBufferAdaptor?
     private var writerStarted = false
-    private var videoCodec = "hevc"
+    private var videoCodec = "h264"
 
     // Per-frame pose stream + one-shot intrinsics.
     private var poseHandle: FileHandle?
@@ -89,6 +89,15 @@ final class Recorder: NSObject, ObservableObject {
         session.delegateQueue = delegateQueue
         let config = ARWorldTrackingConfiguration()
         config.worldAlignment = .gravity
+        // Smaller files: prefer the lowest frame-rate, then lowest-resolution format.
+        if let format = ARWorldTrackingConfiguration.supportedVideoFormats.min(by: {
+            $0.framesPerSecond != $1.framesPerSecond
+                ? $0.framesPerSecond < $1.framesPerSecond
+                : $0.imageResolution.width * $0.imageResolution.height
+                    < $1.imageResolution.width * $1.imageResolution.height
+        }) {
+            config.videoFormat = format
+        }
         if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
             config.frameSemantics.insert(.sceneDepth) // LiDAR depth (Pro devices)
         }
@@ -235,11 +244,15 @@ final class Recorder: NSObject, ObservableObject {
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mp4) else { return }
+        writer.shouldOptimizeForNetworkUse = true // moov atom at front → web-streamable
 
         let settings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.hevc,
+            AVVideoCodecKey: AVVideoCodecType.h264, // universal browser playback (Chrome/Firefox can't do HEVC)
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
+            AVVideoCompressionPropertiesKey: [
+                AVVideoAverageBitRateKey: 6_000_000, // ~6 Mbps cap → smaller video
+            ],
         ]
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = true
