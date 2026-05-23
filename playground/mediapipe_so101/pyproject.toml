@@ -5,6 +5,7 @@ description = "MediaPipe hand-pose teleoperation prototype for the SO101 followe
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "feetech-servo-sdk>=1.0.0",
     "lerobot==0.5.1",
     "mediapipe>=0.10.35",
     "opencv-contrib-python>=4.13.0.92",
