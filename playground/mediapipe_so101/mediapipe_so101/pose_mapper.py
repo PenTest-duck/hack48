@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from numbers import Real
 
 from .types import HandFeatures, HandSample, Landmark, RobotTargets
 
@@ -23,8 +24,22 @@ class MappingConfig:
     gripper_closed: float = 20.0
     pinch_closed_ratio: float = 0.35
     pinch_open_ratio: float = 1.40
+    min_hand_width: float = 0.03
 
     def __post_init__(self) -> None:
+        for field_name in (
+            "wrist_flex_gain",
+            "wrist_roll_gain",
+            "gripper_open",
+            "gripper_closed",
+            "pinch_closed_ratio",
+            "pinch_open_ratio",
+            "min_hand_width",
+        ):
+            _validate_finite_number(field_name, getattr(self, field_name))
+
+        if self.min_hand_width <= 0.0:
+            raise ValueError("min_hand_width must be greater than 0")
         if self.pinch_open_ratio <= self.pinch_closed_ratio:
             raise ValueError("pinch_open_ratio must be greater than pinch_closed_ratio")
 
@@ -49,7 +64,7 @@ class PoseMapper:
 
         features = extract_features(sample, self.config)
         flex_delta = features.flex - self._neutral_features.flex
-        roll_delta = features.roll - self._neutral_features.roll
+        roll_delta = _normalize_angle(features.roll - self._neutral_features.roll)
         gripper = self.config.gripper_closed + features.pinch_open * (
             self.config.gripper_open - self.config.gripper_closed
         )
@@ -74,7 +89,13 @@ def extract_features(sample: HandSample, config: MappingConfig | None = None) ->
     thumb_tip = landmarks[THUMB_TIP]
     index_tip = landmarks[INDEX_TIP]
 
-    hand_width = max(_distance(index_mcp, pinky_mcp), 1e-6)
+    for landmark in (wrist, thumb_tip, index_mcp, index_tip, middle_mcp, pinky_mcp):
+        _validate_landmark(landmark)
+
+    hand_width = _distance(index_mcp, pinky_mcp)
+    if hand_width < cfg.min_hand_width:
+        raise ValueError("Hand width is too small")
+
     roll = math.atan2(index_mcp.y - pinky_mcp.y, pinky_mcp.x - index_mcp.x)
     flex = (middle_mcp.y - wrist.y) / hand_width
     pinch_ratio = _distance(thumb_tip, index_tip) / hand_width
@@ -89,6 +110,20 @@ def extract_features(sample: HandSample, config: MappingConfig | None = None) ->
 
 def _distance(a: Landmark, b: Landmark) -> float:
     return math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)
+
+
+def _validate_landmark(landmark: Landmark) -> None:
+    if not all(math.isfinite(value) for value in (landmark.x, landmark.y, landmark.z)):
+        raise ValueError("Landmark coordinates must be finite")
+
+
+def _validate_finite_number(name: str, value: float) -> None:
+    if isinstance(value, bool) or not isinstance(value, Real) or not math.isfinite(value):
+        raise ValueError(f"{name} must be finite")
+
+
+def _normalize_angle(value: float) -> float:
+    return (value + math.pi) % (2.0 * math.pi) - math.pi
 
 
 def _clamp(value: float, low: float, high: float) -> float:
