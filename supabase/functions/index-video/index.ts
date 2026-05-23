@@ -43,17 +43,17 @@ Deno.serve(async (req) => {
     return json({ error: `Failed to create signed URL: ${signedUrlErr?.message}` }, 500);
   }
 
-  // Submit to TwelveLabs for indexing
-  const tlRes = await fetch("https://api.twelvelabs.io/v1.2/tasks", {
+  const signedUrl = signedUrlData.signedUrl;
+
+  // Submit to TwelveLabs for indexing (v1.3 requires multipart/form-data with video_url)
+  const form = new FormData();
+  form.append("index_id", tlIndexId);
+  form.append("video_url", signedUrl);
+
+  const tlRes = await fetch("https://api.twelvelabs.io/v1.3/tasks", {
     method: "POST",
-    headers: {
-      "x-api-key": tlApiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      index_id: tlIndexId,
-      url: signedUrlData.signedUrl,
-    }),
+    headers: { "x-api-key": tlApiKey },
+    body: form,
   });
 
   if (!tlRes.ok) {

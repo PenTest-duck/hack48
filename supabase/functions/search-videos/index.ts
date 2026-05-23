@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
   const taskId = body.task_id ? String(body.task_id) : null;
 
   // Search TwelveLabs
-  const tlRes = await fetch("https://api.twelvelabs.io/v1.2/search", {
+  const tlRes = await fetch("https://api.twelvelabs.io/v1.3/search", {
     method: "POST",
     headers: {
       "x-api-key": tlApiKey,
