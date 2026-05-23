@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import argparse
+from pathlib import Path
+
+import pytest
+
 from main import (
     LoopState,
     handle_backend_send,
@@ -7,6 +12,7 @@ from main import (
     handle_sync_toggle,
     neutral_rejection_reason,
     sample_is_usable,
+    validate_args,
 )
 from mediapipe_so101.pose_mapper import MappingConfig, PoseMapper
 from mediapipe_so101.safety import SafetyConfig, TargetFilter
@@ -42,6 +48,70 @@ def make_filter() -> TargetFilter:
         ),
         RobotTargets(0.0, 0.0, 50.0),
     )
+
+
+def valid_args(**overrides) -> argparse.Namespace:
+    values = {
+        "fps": 5,
+        "width": 640,
+        "height": 480,
+        "max_hands": 1,
+        "deadman_key": "",
+        "deadman_grace_ms": 175,
+        "detection_confidence": 0.5,
+        "presence_confidence": 0.5,
+        "tracking_confidence": 0.5,
+        "min_hand_confidence": 0.45,
+        "wrist_flex_gain": 30.0,
+        "wrist_roll_gain": 60.0,
+        "gripper_open": 80.0,
+        "gripper_closed": 20.0,
+        "pinch_closed_ratio": 0.35,
+        "pinch_open_ratio": 1.40,
+        "wrist_flex_limit": 25.0,
+        "wrist_roll_limit": 45.0,
+        "gripper_min": 15.0,
+        "gripper_max": 85.0,
+        "max_delta": 4.0,
+        "smoothing": 0.35,
+        "stale_timeout_ms": 150,
+        "enable_robot": False,
+        "robot_port": None,
+        "robot_id": None,
+        "calibration_dir": Path("unused"),
+        "max_relative_target": 5.0,
+    }
+    values.update(overrides)
+    return argparse.Namespace(**values)
+
+
+def test_validate_args_rejects_mismatched_usb_serial_and_robot_id(tmp_path: Path) -> None:
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    (calibration_dir / "so101_5AE60843881.json").write_text("{}")
+    args = valid_args(
+        enable_robot=True,
+        robot_port="/dev/cu.usbmodem5B140317341",
+        robot_id="so101_5AE60843881",
+        calibration_dir=calibration_dir,
+    )
+
+    with pytest.raises(SystemExit, match="serial '5B140317341'"):
+        validate_args(args)
+
+
+def test_validate_args_allows_matching_usb_serial_and_robot_id(tmp_path: Path) -> None:
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    (calibration_dir / "so101_5B140317341.json").write_text("{}")
+    args = valid_args(
+        enable_robot=True,
+        robot_port="/dev/tty.usbmodem5B140317341",
+        robot_id="so101_5B140317341",
+        calibration_dir=calibration_dir,
+    )
+
+    validate_args(args)
 
 
 def test_neutral_rejection_reason_rejects_low_confidence_sample() -> None:

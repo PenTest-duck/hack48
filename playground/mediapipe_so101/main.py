@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import math
+import re
 import time
 from pathlib import Path
 
@@ -158,11 +159,40 @@ def validate_args(args: argparse.Namespace) -> None:
             raise SystemExit("--robot-port is required with --enable-robot")
         if not args.robot_id:
             raise SystemExit("--robot-id is required with --enable-robot")
+        validate_robot_port_matches_id(args.robot_port, args.robot_id)
         calibration_file = args.calibration_dir.expanduser().resolve() / f"{args.robot_id}.json"
         if not calibration_file.exists():
             raise SystemExit(f"Calibration file not found: {calibration_file}")
         if not math.isfinite(args.max_relative_target) or args.max_relative_target <= 0:
             raise SystemExit("--max-relative-target must be finite and positive")
+
+
+def validate_robot_port_matches_id(robot_port: str, robot_id: str) -> None:
+    port_serial = robot_port_serial_hint(robot_port)
+    robot_serial = robot_id_serial_hint(robot_id)
+    if port_serial is None or robot_serial is None or port_serial == robot_serial:
+        return
+
+    raise SystemExit(
+        f"--robot-port appears to be for serial {port_serial!r}, but --robot-id is {robot_id!r}. "
+        f"Use --robot-id so101_{port_serial} or the matching robot port; refusing before calibration "
+        "can be written to the wrong arm."
+    )
+
+
+def robot_port_serial_hint(robot_port: str) -> str | None:
+    match = re.search(r"(?:^|[.])(?:usbmodem|usbserial)([-_A-Za-z0-9]+)$", Path(robot_port).name)
+    if match is None:
+        return None
+    return match.group(1).lstrip("-_") or None
+
+
+def robot_id_serial_hint(robot_id: str) -> str | None:
+    prefix = "so101_"
+    if not robot_id.startswith(prefix):
+        return None
+    serial = robot_id.removeprefix(prefix)
+    return serial or None
 
 
 def check_robot_imports(args: argparse.Namespace) -> None:
