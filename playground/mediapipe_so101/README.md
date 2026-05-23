@@ -32,6 +32,17 @@ Before neutral capture, no targets are emitted. Neutral capture requires fresh, 
 
 ## Robot Mode
 
+Check robot configuration without opening the camera:
+
+```bash
+uv run python main.py \
+  --check \
+  --enable-robot \
+  --robot-port /dev/cu.usbmodemYOUR_PORT \
+  --robot-id so101_5AE60843881 \
+  --calibration-dir ../so101/calibration/robots/so_follower
+```
+
 Example:
 
 ```bash
@@ -46,7 +57,7 @@ uv run python main.py \
   --wrist-roll-limit 25
 ```
 
-Use `--deadman-key x` to require pressing or holding `x` for command output:
+Use `--deadman-key x` to require deadman key activity for command output. Each detected keypress is active for `--deadman-grace-ms` milliseconds, default `175`; press repeatedly, or hold if your OS/window key repeat is active.
 
 ```bash
 uv run python main.py \
@@ -71,6 +82,6 @@ The MediaPipe hand landmarker model is downloaded on first use and cached in `mo
 
 ## Safety Notes
 
-This is safer than full-arm teleoperation because it only commands wrist flex, wrist roll, and gripper. It is still physical robot motion. Keep the wrist clear of the table and cables, keep fingers out of the gripper, start with low FPS and small limits, and press `space` or `q` if motion is unexpected.
+This has a narrower command surface than full-arm teleoperation because it only commands wrist flex, wrist roll, and gripper. It is still physical robot motion. Keep the wrist clear of the table and cables, keep fingers out of the gripper, start with low FPS and small limits, and press `space` or `q` if motion is unexpected.
 
 The script freezes command output when tracking is missing, stale, below confidence, paused, the deadman key is inactive, or neutral has not been captured. A backend send failure disables sync and locks command output off until restart.
