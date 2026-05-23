@@ -25,16 +25,16 @@ export default async function CollectorTasksPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Available tasks</h1>
-        <p className="text-gray-500 text-sm mt-1">
+        <h1 className="text-2xl font-bold text-white">Available tasks</h1>
+        <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
           Tasks matched to your capabilities. Earn money for each approved submission.
         </p>
       </div>
 
       {!tasks?.length ? (
-        <div className="text-center py-20 bg-white rounded-xl border border-gray-100">
+        <div className="surface-panel py-20 text-center">
           <div className="text-4xl mb-3">🔍</div>
-          <p className="text-gray-500">No matching tasks right now. Check back soon.</p>
+          <p className="text-[var(--foreground-secondary)]">No matching tasks right now. Check back soon.</p>
         </div>
       ) : (
         <div className="grid gap-4">
@@ -46,34 +46,34 @@ export default async function CollectorTasksPage() {
               <Link
                 key={task.id}
                 href={`/collector/tasks/${task.id}`}
-                className="block bg-white rounded-xl border border-gray-100 p-5 hover:border-gray-300 transition-colors"
+                className="surface-panel block p-5 transition-colors hover:border-[rgba(255,255,255,0.2)]"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 truncate">{task.title}</h3>
+                    <h3 className="truncate font-semibold text-white">{task.title}</h3>
                     {task.description && (
-                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">{task.description}</p>
+                      <p className="mt-1 line-clamp-2 text-sm text-[var(--foreground-secondary)]">{task.description}</p>
                     )}
                     <div className="flex items-center gap-3 mt-3">
-                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                      <span className="rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-0.5 text-xs text-[var(--foreground-secondary)]">
                         {task.data_type}
                       </span>
-                      <span className="text-xs text-gray-400">{spotsLeft} spots left</span>
+                      <span className="text-xs text-[var(--foreground-secondary)]">{spotsLeft} spots left</span>
                       {task.deadline && (
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-[var(--foreground-secondary)]">
                           Due {new Date(task.deadline).toLocaleDateString()}
                         </span>
                       )}
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="text-lg font-bold text-gray-900">${task.bounty_amount}</div>
-                    <div className="text-xs text-gray-400">per submission</div>
+                    <div className="text-xl font-bold text-[#8ad09a]">${task.bounty_amount}</div>
+                    <div className="text-xs text-[var(--foreground-secondary)]">per submission</div>
                   </div>
                 </div>
-                <div className="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[rgba(255,255,255,0.08)]">
                   <div
-                    className="h-full bg-green-500 rounded-full"
+                    className="h-full rounded-full bg-[#2f9e44]"
                     style={{ width: `${progress}%` }}
                   />
                 </div>

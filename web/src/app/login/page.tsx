@@ -16,30 +16,30 @@ export default function LoginPage() {
   })
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4">
+      <div className="surface-panel w-full max-w-md p-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
-          <p className="text-gray-500 text-sm mt-1">Sign in to your account</p>
+          <h1 className="text-2xl font-bold text-white">Welcome back</h1>
+          <p className="mt-1 text-sm text-[var(--foreground-secondary)]">Sign in to your account</p>
         </div>
 
         <form action={formAction} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="mb-1 block text-sm font-medium text-white">Email</label>
             <input
               name="email"
               type="email"
               required
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+              className="input-dark text-sm"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="mb-1 block text-sm font-medium text-white">Password</label>
             <input
               name="password"
               type="password"
               required
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+              className="input-dark text-sm"
             />
           </div>
 
@@ -56,15 +56,15 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={pending || !isSupabaseConfigured}
-            className="w-full bg-black text-white rounded-lg py-2 text-sm font-medium hover:bg-gray-800 disabled:opacity-50 transition-colors"
+            className="btn-lab w-full rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-50"
           >
             {pending ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-500 mt-6">
+        <p className="mt-6 text-center text-sm text-[var(--foreground-secondary)]">
           No account?{' '}
-          <Link href="/signup" className="text-black font-medium hover:underline">
+          <Link href="/signup" className="font-medium text-white hover:underline">
             Sign up
           </Link>
         </p>

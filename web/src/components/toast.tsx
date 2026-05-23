@@ -31,9 +31,9 @@ export default function ToastContainer() {
       {toasts.map(toast => (
         <div
           key={toast.id}
-          className="bg-gray-900 text-white text-sm px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in slide-in-from-bottom-2"
+          className="surface-panel flex items-center gap-2 px-4 py-3 text-sm text-white animate-in slide-in-from-bottom-2"
         >
-          <span className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+          <span className="h-2 w-2 shrink-0 rounded-full bg-[#2f9e44]" />
           {toast.message}
         </div>
       ))}

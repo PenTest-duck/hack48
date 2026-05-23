@@ -16,10 +16,10 @@ export default async function LabDashboard() {
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Your Tasks</h1>
+        <h1 className="text-2xl font-bold text-white">Your Tasks</h1>
         <Link
           href="/lab/tasks/new"
-          className="bg-black text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
+          className="btn-lab rounded-lg px-4 py-2 text-sm font-medium transition-colors"
         >
           + New Task
         </Link>
@@ -27,30 +27,30 @@ export default async function LabDashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="text-2xl font-bold">{tasks?.length ?? 0}</div>
-          <div className="text-sm text-gray-500 mt-1">Total tasks</div>
+        <div className="surface-panel p-4">
+          <div className="text-2xl font-bold text-white">{tasks?.length ?? 0}</div>
+          <div className="mt-1 text-sm text-[var(--foreground-secondary)]">Total tasks</div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="text-2xl font-bold">
+        <div className="surface-panel p-4">
+          <div className="text-2xl font-bold text-white">
             {tasks?.reduce((sum, t) => sum + t.quantity_filled, 0) ?? 0}
           </div>
-          <div className="text-sm text-gray-500 mt-1">Submissions received</div>
+          <div className="mt-1 text-sm text-[var(--foreground-secondary)]">Submissions received</div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="text-2xl font-bold">${totalSpend.toFixed(2)}</div>
-          <div className="text-sm text-gray-500 mt-1">Total spent</div>
+        <div className="surface-panel p-4">
+          <div className="text-2xl font-bold text-[#aebeff]">${totalSpend.toFixed(2)}</div>
+          <div className="mt-1 text-sm text-[var(--foreground-secondary)]">Total spent</div>
         </div>
       </div>
 
       {/* Task list */}
       {!tasks?.length ? (
-        <div className="text-center py-20 bg-white rounded-xl border border-gray-100">
+        <div className="surface-panel py-20 text-center">
           <div className="text-4xl mb-3">📋</div>
-          <p className="text-gray-500">No tasks yet. Create your first one.</p>
+          <p className="text-[var(--foreground-secondary)]">No tasks yet. Create your first one.</p>
           <Link
             href="/lab/tasks/new"
-            className="inline-block mt-4 bg-black text-white px-4 py-2 rounded-lg text-sm font-medium"
+            className="btn-lab mt-4 inline-block rounded-lg px-4 py-2 text-sm font-medium"
           >
             Create task
           </Link>
@@ -61,33 +61,33 @@ export default async function LabDashboard() {
             <Link
               key={task.id}
               href={`/lab/tasks/${task.id}`}
-              className="block bg-white rounded-xl border border-gray-100 p-5 hover:border-gray-300 transition-colors"
+              className="surface-panel block p-5 transition-colors hover:border-[rgba(255,255,255,0.2)]"
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="font-semibold text-gray-900">{task.title}</h3>
+                  <h3 className="font-semibold text-white">{task.title}</h3>
                   <div className="flex items-center gap-3 mt-2">
-                    <span className="text-sm text-gray-500">
+                    <span className="text-sm text-[var(--foreground-secondary)]">
                       ${task.bounty_amount} / submission
                     </span>
-                    <span className="text-sm text-gray-400">·</span>
-                    <span className="text-sm text-gray-500">
+                    <span className="text-sm text-[var(--foreground-secondary)]">·</span>
+                    <span className="text-sm text-[var(--foreground-secondary)]">
                       {task.quantity_filled} / {task.quantity_needed} collected
                     </span>
                   </div>
                 </div>
-                <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                <span className={`rounded-full px-2 py-1 text-xs font-medium ${
                   task.status === 'open'
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-gray-100 text-gray-500'
+                    ? 'bg-[rgba(59,91,219,0.16)] text-[#aebeff]'
+                    : 'bg-[rgba(115,120,131,0.18)] text-[#d3d7de]'
                 }`}>
                   {task.status}
                 </span>
               </div>
               {/* Progress bar */}
-              <div className="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[rgba(255,255,255,0.08)]">
                 <div
-                  className="h-full bg-black rounded-full"
+                  className="h-full rounded-full bg-[#3b5bdb]"
                   style={{ width: `${Math.min(100, (task.quantity_filled / task.quantity_needed) * 100)}%` }}
                 />
               </div>

@@ -81,13 +81,13 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
 
   if (!submissions.length) {
     return (
-      <div className="text-center py-20 bg-white rounded-xl border border-gray-100">
+      <div className="surface-panel py-20 text-center">
         <div className="text-4xl mb-3">📡</div>
-        <p className="text-gray-500 font-medium">Waiting for submissions</p>
-        <p className="text-gray-400 text-sm mt-1">This page updates live when collectors upload data</p>
+        <p className="font-medium text-white">Waiting for submissions</p>
+        <p className="mt-1 text-sm text-[var(--foreground-secondary)]">This page updates live when collectors upload data</p>
         <div className="mt-4 flex items-center justify-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          <span className="text-xs text-gray-400">Listening for uploads</span>
+          <span className="h-2 w-2 rounded-full bg-[#2f9e44] animate-pulse" />
+          <span className="text-xs text-[var(--foreground-secondary)]">Listening for uploads</span>
         </div>
       </div>
     )
@@ -96,11 +96,11 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold text-gray-900">
-          Submissions <span className="text-gray-400 font-normal">({submissions.length})</span>
+        <h2 className="font-semibold text-white">
+          Submissions <span className="font-normal text-[var(--foreground-secondary)]">({submissions.length})</span>
         </h2>
         {newCount > 0 && (
-          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+          <span className="rounded-full bg-[rgba(47,158,68,0.16)] px-2 py-1 text-xs font-medium text-[#99ddaa]">
             +{newCount} new this session
           </span>
         )}
@@ -141,13 +141,13 @@ function SubmissionCard({
   } | null
 
   const statusStyles = {
-    pending: 'bg-amber-100 text-amber-700',
-    approved: 'bg-green-100 text-green-700',
-    rejected: 'bg-red-100 text-red-600',
+    pending: 'bg-[rgba(216,163,71,0.16)] text-[#f0cb7c]',
+    approved: 'bg-[rgba(47,158,68,0.16)] text-[#99ddaa]',
+    rejected: 'bg-[rgba(210,100,100,0.16)] text-[#f3a8a8]',
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+    <div className="surface-panel overflow-hidden">
       {/* Video player */}
       {submission.signedUrl ? (
         <video
@@ -157,8 +157,8 @@ function SubmissionCard({
           preload="metadata"
         />
       ) : (
-        <div className="w-full h-40 bg-gray-100 flex items-center justify-center">
-          <span className="text-gray-400 text-sm">Video preview unavailable</span>
+        <div className="flex h-40 w-full items-center justify-center bg-[var(--surface-muted)]">
+          <span className="text-sm text-[var(--foreground-secondary)]">Video preview unavailable</span>
         </div>
       )}
 
@@ -169,7 +169,7 @@ function SubmissionCard({
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusStyles[submission.status]}`}>
                 {submission.status}
               </span>
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-[var(--foreground-secondary)]">
                 {new Date(submission.created_at).toLocaleString()}
               </span>
             </div>
@@ -178,18 +178,18 @@ function SubmissionCard({
             {meta && (
               <div className="flex flex-wrap gap-3 mt-2">
                 {meta.duration_s && (
-                  <span className="text-xs text-gray-500">{meta.duration_s}s</span>
+                  <span className="text-xs text-[var(--foreground-secondary)]">{meta.duration_s}s</span>
                 )}
                 {meta.file_size_bytes && (
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-[var(--foreground-secondary)]">
                     {(meta.file_size_bytes / 1024 / 1024).toFixed(1)} MB
                   </span>
                 )}
                 {meta.device_model && (
-                  <span className="text-xs text-gray-500">{meta.device_model}</span>
+                  <span className="text-xs text-[var(--foreground-secondary)]">{meta.device_model}</span>
                 )}
                 {meta.gps_lat && meta.gps_lng && (
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-[var(--foreground-secondary)]">
                     {meta.gps_lat.toFixed(4)}, {meta.gps_lng.toFixed(4)}
                   </span>
                 )}
@@ -203,14 +203,14 @@ function SubmissionCard({
               <button
                 onClick={onReject}
                 disabled={isPending}
-                className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                className="btn-neutral rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
               >
                 Reject
               </button>
               <button
                 onClick={onApprove}
                 disabled={isPending}
-                className="px-3 py-1.5 text-xs bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors"
+                className="btn-lab rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
               >
                 Approve
               </button>

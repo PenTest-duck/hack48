@@ -55,36 +55,36 @@ export default async function OnboardPage() {
   return (
     <div className="max-w-lg">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Tell us about yourself</h1>
-        <p className="text-gray-500 text-sm mt-1">
+        <h1 className="text-2xl font-bold text-white">Tell us about yourself</h1>
+        <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
           We use this to match you with the right data collection tasks.
         </p>
       </div>
 
       <form action={submitQuestionnaire} className="space-y-8">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Your city</label>
+          <label className="mb-1 block text-sm font-medium text-white">Your city</label>
           <input
             name="location_city"
             type="text"
             placeholder="e.g. San Francisco"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+            className="input-dark text-sm"
           />
         </div>
 
         {CAPABILITY_QUESTIONS.map((q, i) => (
           <div key={i}>
-            <p className="text-sm font-medium text-gray-700 mb-3">{q.question}</p>
+            <p className="mb-3 text-sm font-medium text-white">{q.question}</p>
             <div className="space-y-2">
               {q.options.map(opt => (
-                <label key={opt.value} className="flex items-start gap-3 cursor-pointer group">
+                <label key={opt.value} className="surface-muted flex cursor-pointer items-start gap-3 p-3">
                   <input
                     type="checkbox"
                     name="capabilities"
                     value={opt.value}
-                    className="mt-0.5 rounded border-gray-300"
+                    className="mt-0.5 rounded border-white/20 bg-transparent"
                   />
-                  <span className="text-sm text-gray-700">{opt.label}</span>
+                  <span className="text-sm text-[var(--foreground-secondary)]">{opt.label}</span>
                 </label>
               ))}
             </div>
@@ -93,7 +93,7 @@ export default async function OnboardPage() {
 
         <button
           type="submit"
-          className="w-full bg-black text-white rounded-lg py-2.5 text-sm font-medium hover:bg-gray-800 transition-colors"
+          className="btn-collector w-full rounded-lg py-2.5 text-sm font-medium transition-colors"
         >
           Start earning →
         </button>
