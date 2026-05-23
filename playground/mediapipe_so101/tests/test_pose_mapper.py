@@ -125,6 +125,21 @@ def test_map_requires_neutral_capture() -> None:
         pose_mapper.map(hand())
 
 
+@pytest.mark.parametrize(
+    "robot_targets",
+    [
+        RobotTargets(math.nan, 0.0, 50.0),
+        RobotTargets(0.0, math.inf, 50.0),
+        RobotTargets(0.0, 0.0, -math.inf),
+    ],
+)
+def test_capture_neutral_rejects_non_finite_robot_targets(robot_targets: RobotTargets) -> None:
+    pose_mapper = mapper()
+
+    with pytest.raises(ValueError, match="Robot target values must be finite"):
+        pose_mapper.capture_neutral(hand(), robot_targets)
+
+
 def test_extract_features_rejects_degenerate_hand_width() -> None:
     sample = hand(index_mcp=(0.50, 0.55, 0.0), pinky_mcp=(0.51, 0.55, 0.0))
 

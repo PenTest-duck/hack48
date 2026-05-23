@@ -12,7 +12,6 @@ THUMB_TIP = 4
 INDEX_MCP = 5
 INDEX_TIP = 8
 MIDDLE_MCP = 9
-MIDDLE_TIP = 12
 PINKY_MCP = 17
 
 
@@ -55,6 +54,7 @@ class PoseMapper:
         return self._neutral_features is not None and self._neutral_targets is not None
 
     def capture_neutral(self, sample: HandSample, robot_targets: RobotTargets) -> None:
+        _validate_robot_targets(robot_targets)
         self._neutral_features = extract_features(sample, self.config)
         self._neutral_targets = robot_targets
 
@@ -115,6 +115,14 @@ def _distance(a: Landmark, b: Landmark) -> float:
 def _validate_landmark(landmark: Landmark) -> None:
     if not all(math.isfinite(value) for value in (landmark.x, landmark.y, landmark.z)):
         raise ValueError("Landmark coordinates must be finite")
+
+
+def _validate_robot_targets(robot_targets: RobotTargets) -> None:
+    if not all(
+        math.isfinite(value)
+        for value in (robot_targets.wrist_flex, robot_targets.wrist_roll, robot_targets.gripper)
+    ):
+        raise ValueError("Robot target values must be finite")
 
 
 def _validate_finite_number(name: str, value: float) -> None:
