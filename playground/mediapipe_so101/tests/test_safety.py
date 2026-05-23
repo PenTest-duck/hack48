@@ -236,3 +236,87 @@ def test_hard_limit_clamp_applies_when_delta_allows_desired_target() -> None:
 
     assert result.targets == RobotTargets(20.0, -30.0, 80.0)
     assert result.clamped_keys == ("gripper.pos", "wrist_flex.pos", "wrist_roll.pos")
+
+
+@pytest.mark.parametrize("limit", [(float("nan"), 20.0), (-20.0, float("inf"))])
+def test_rejects_non_finite_hard_limits(limit: tuple[float, float]) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        make_config(
+            limits={
+                "wrist_flex.pos": limit,
+                "wrist_roll.pos": (-30.0, 30.0),
+                "gripper.pos": (20.0, 80.0),
+            },
+        )
+
+
+@pytest.mark.parametrize("max_delta", [float("nan"), float("inf")])
+def test_rejects_non_finite_max_delta(max_delta: float) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        make_config(
+            max_delta={
+                "wrist_flex.pos": max_delta,
+                "wrist_roll.pos": 10.0,
+                "gripper.pos": 15.0,
+            },
+        )
+
+
+@pytest.mark.parametrize("smoothing", [float("nan"), float("inf")])
+def test_rejects_non_finite_smoothing(smoothing: float) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        make_config(smoothing=smoothing)
+
+
+@pytest.mark.parametrize(
+    "initial_targets",
+    [
+        RobotTargets(wrist_flex=float("nan"), wrist_roll=0.0, gripper=50.0),
+        RobotTargets(wrist_flex=0.0, wrist_roll=float("inf"), gripper=50.0),
+        RobotTargets(wrist_flex=0.0, wrist_roll=0.0, gripper=float("-inf")),
+    ],
+)
+def test_rejects_non_finite_initial_targets(initial_targets: RobotTargets) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        TargetFilter(make_config(), initial_targets=initial_targets)
+
+
+@pytest.mark.parametrize(
+    "desired",
+    [
+        RobotTargets(wrist_flex=float("nan"), wrist_roll=10.0, gripper=60.0),
+        RobotTargets(wrist_flex=10.0, wrist_roll=float("inf"), gripper=60.0),
+        RobotTargets(wrist_flex=10.0, wrist_roll=10.0, gripper=float("-inf")),
+    ],
+)
+def test_non_finite_desired_target_freezes_at_last_safe_target(
+    desired: RobotTargets,
+) -> None:
+    filt = make_filter()
+
+    result = filt.update(
+        RobotTargets(wrist_flex=5.0, wrist_roll=5.0, gripper=55.0),
+        now_ms=1000,
+        sample_timestamp_ms=1000,
+        sync_enabled=True,
+        neutral_ready=True,
+        deadman_active=True,
+        tracking_ok=True,
+    )
+    assert result.targets == RobotTargets(5.0, 5.0, 55.0)
+
+    result = filt.update(
+        desired,
+        now_ms=1010,
+        sample_timestamp_ms=1010,
+        sync_enabled=True,
+        neutral_ready=True,
+        deadman_active=True,
+        tracking_ok=True,
+    )
+
+    assert result.targets == RobotTargets(5.0, 5.0, 55.0)
+    assert result.frozen is True
+    assert result.clamped_keys == ()
+    assert result.reason is FreezeReason.TRACKING_LOST
+    assert filt.last_targets == RobotTargets(5.0, 5.0, 55.0)

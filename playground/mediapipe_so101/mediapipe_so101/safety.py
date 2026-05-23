@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 from .types import CONTROLLED_KEYS, FilterResult, FreezeReason, RobotTargets
 
@@ -21,12 +22,19 @@ class SafetyConfig:
             raise ValueError(f"Missing max_delta values for {sorted(missing_delta)}")
         for key in CONTROLLED_KEYS:
             low, high = self.limits[key]
+            if not math.isfinite(low) or not math.isfinite(high):
+                raise ValueError(f"Safety limits for {key} must be finite")
             if low >= high:
                 raise ValueError(f"Invalid safety limit for {key}: {low} >= {high}")
-            if self.max_delta[key] <= 0:
+            max_delta = self.max_delta[key]
+            if not math.isfinite(max_delta):
+                raise ValueError(f"max_delta for {key} must be finite")
+            if max_delta <= 0:
                 raise ValueError(
-                    f"Invalid max_delta for {key}: {self.max_delta[key]} <= 0"
+                    f"Invalid max_delta for {key}: {max_delta} <= 0"
                 )
+        if not math.isfinite(self.smoothing):
+            raise ValueError("smoothing must be finite")
         if not 0.0 < self.smoothing <= 1.0:
             raise ValueError("smoothing must be in the interval (0, 1]")
         if self.stale_timeout_ms <= 0:
@@ -65,6 +73,13 @@ class TargetFilter:
         if freeze_reason is not FreezeReason.ACTIVE:
             return FilterResult(
                 self._last, frozen=True, clamped_keys=(), reason=freeze_reason
+            )
+        if not self._targets_are_finite(desired):
+            return FilterResult(
+                self._last,
+                frozen=True,
+                clamped_keys=(),
+                reason=FreezeReason.TRACKING_LOST,
             )
 
         smoothed = RobotTargets(
@@ -110,12 +125,17 @@ class TargetFilter:
     def _validate_initial_targets(self, initial_targets: RobotTargets) -> None:
         values = initial_targets.as_action()
         for key in CONTROLLED_KEYS:
+            if not math.isfinite(values[key]):
+                raise ValueError(f"initial target for {key} must be finite")
             low, high = self.config.limits[key]
             if not low <= values[key] <= high:
                 raise ValueError(
                     f"initial target for {key} is outside safety limit "
                     f"[{low}, {high}]: {values[key]}"
                 )
+
+    def _targets_are_finite(self, targets: RobotTargets) -> bool:
+        return all(math.isfinite(value) for value in targets.as_action().values())
 
     def _limit_delta_and_clamp(
         self, desired: RobotTargets
