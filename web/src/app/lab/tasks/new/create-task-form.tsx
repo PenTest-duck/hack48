@@ -1,7 +1,6 @@
 'use client'
 
-import { createTask } from '@/app/actions/tasks'
-import { useActionState, useEffect, useId, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 const REQUIREMENTS = [
   { value: 'outdoor', label: 'Outdoor', className: 'tag-outdoor' },
@@ -18,8 +17,11 @@ type PreviewAsset = {
   url: string
 }
 
-export default function CreateTaskForm() {
-  const [state, formAction, pending] = useActionState(createTask, { error: null })
+export default function CreateTaskForm({
+  action,
+}: {
+  action: (formData: FormData) => void
+}) {
   const uploadId = useId()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -27,10 +29,6 @@ export default function CreateTaskForm() {
   const [quantity, setQuantity] = useState(24)
   const [deadline, setDeadline] = useState('')
   const [requirements, setRequirements] = useState<string[]>([])
-  const [customRequirements, setCustomRequirements] = useState<string[]>([])
-  const [customRequirementInput, setCustomRequirementInput] = useState('')
-  const [specifics, setSpecifics] = useState<string[]>([])
-  const [specificsInput, setSpecificsInput] = useState('')
   const [assets, setAssets] = useState<PreviewAsset[]>([])
 
   useEffect(() => {
@@ -47,44 +45,6 @@ export default function CreateTaskForm() {
     )
   }
 
-  function addTag(
-    value: string,
-    current: string[],
-    setTags: Dispatch<SetStateAction<string[]>>,
-    setInput: Dispatch<SetStateAction<string>>,
-  ) {
-    const val = value.trim()
-    if (!val) return
-
-    const normalized = val.toLowerCase()
-    if (current.some((item) => item.toLowerCase() === normalized)) return
-
-    setTags((tags) => [...tags, val])
-    setInput('')
-  }
-
-  function handleCustomRequirementKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      addTag(customRequirementInput, customRequirements, setCustomRequirements, setCustomRequirementInput)
-    }
-  }
-
-  function removeCustomRequirement(val: string) {
-    setCustomRequirements((current) => current.filter((item) => item !== val))
-  }
-
-  function handleSpecificsKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      addTag(specificsInput, specifics, setSpecifics, setSpecificsInput)
-    }
-  }
-
-  function removeSpecific(val: string) {
-    setSpecifics((current) => current.filter((item) => item !== val))
-  }
-
   function handleFiles(files: FileList | null) {
     if (!files) return
 
@@ -98,24 +58,16 @@ export default function CreateTaskForm() {
     })
   }
 
-  const allRequirements = [...requirements, ...customRequirements]
   const bountyValue = Number.parseFloat(bounty || '0')
   const estimatedSpend = Number.isFinite(bountyValue) ? bountyValue * quantity : 0
   const filledChecks = [
     title.trim().length > 0,
     description.trim().length > 0,
     assets.length > 0,
-    allRequirements.length > 0,
+    requirements.length > 0,
     bountyValue > 0,
     deadline.length > 0,
   ].filter(Boolean).length
-
-  const canSubmit =
-    title.trim().length > 0 &&
-    description.trim().length > 0 &&
-    allRequirements.length > 0 &&
-    bountyValue > 0 &&
-    quantity > 0
 
   return (
     <div className="space-y-8">
@@ -138,13 +90,8 @@ export default function CreateTaskForm() {
         </div>
       </div>
 
-      <form
-        id="create-task-form"
-        action={formAction}
-        encType="multipart/form-data"
-        className="grid gap-8 xl:grid-cols-[minmax(0,1.55fr)_360px]"
-      >
-        <div className="space-y-6">
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,1.55fr)_360px]">
+        <form id="create-task-form" action={action} className="space-y-6">
           <section className="surface-panel p-5 sm:p-6">
             <div className="mb-4">
               <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Task brief</h2>
@@ -257,80 +204,10 @@ export default function CreateTaskForm() {
                   </button>
                 )
               })}
-              {customRequirements.map((req) => (
-                <span
-                  key={req}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.08)] px-4 py-2 text-sm font-medium text-white"
-                >
-                  {req}
-                  <button
-                    type="button"
-                    onClick={() => removeCustomRequirement(req)}
-                    className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[var(--foreground-secondary)] transition-colors hover:text-white"
-                    aria-label={`Remove ${req}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
             </div>
 
-            <div className="mt-4">
-              <input
-                type="text"
-                value={customRequirementInput}
-                onChange={(e) => setCustomRequirementInput(e.target.value)}
-                onKeyDown={handleCustomRequirementKeyDown}
-                placeholder="Add a custom requirement and press Enter"
-                className="input-dark text-sm"
-              />
-            </div>
-
-            {allRequirements.map((requirement) => (
+            {requirements.map((requirement) => (
               <input key={requirement} type="hidden" name="requirements" value={requirement} />
-            ))}
-          </section>
-
-          <section className="surface-panel p-5 sm:p-6">
-            <div className="mb-4">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Specifics</h2>
-              <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-                Tag specific objects, subjects, or details the collector should include.
-              </p>
-            </div>
-
-            {specifics.length > 0 && (
-              <div className="mb-4 flex flex-wrap gap-2">
-                {specifics.map((specific) => (
-                  <span
-                    key={specific}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.08)] px-3.5 py-1.5 text-sm font-medium text-white"
-                  >
-                    {specific}
-                    <button
-                      type="button"
-                      onClick={() => removeSpecific(specific)}
-                      className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[var(--foreground-secondary)] transition-colors hover:text-white"
-                      aria-label={`Remove ${specific}`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <input
-              type="text"
-              value={specificsInput}
-              onChange={(e) => setSpecificsInput(e.target.value)}
-              onKeyDown={handleSpecificsKeyDown}
-              placeholder="Type a specific (e.g. apple) and press Enter"
-              className="input-dark text-sm"
-            />
-
-            {specifics.map((specific) => (
-              <input key={specific} type="hidden" name="specifics" value={specific} />
             ))}
           </section>
 
@@ -408,7 +285,7 @@ export default function CreateTaskForm() {
               className="input-dark text-sm"
             />
           </section>
-        </div>
+        </form>
 
         <aside className="xl:sticky xl:top-8 xl:self-start">
           <div className="surface-panel p-5 sm:p-6">
@@ -430,39 +307,17 @@ export default function CreateTaskForm() {
                   Selected requirements
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {allRequirements.length > 0 ? (
-                    <>
-                      {REQUIREMENTS.filter((item) => requirements.includes(item.value)).map((item) => (
-                        <span key={item.value} className={`rounded-full border px-2.5 py-1 text-xs font-medium ${item.className}`}>
-                          {item.label}
-                        </span>
-                      ))}
-                      {customRequirements.map((req) => (
-                        <span key={req} className="rounded-full border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.08)] px-2.5 py-1 text-xs font-medium text-white">
-                          {req}
-                        </span>
-                      ))}
-                    </>
+                  {requirements.length > 0 ? (
+                    REQUIREMENTS.filter((item) => requirements.includes(item.value)).map((item) => (
+                      <span key={item.value} className={`rounded-full border px-2.5 py-1 text-xs font-medium ${item.className}`}>
+                        {item.label}
+                      </span>
+                    ))
                   ) : (
                     <span className="text-sm text-[var(--foreground-secondary)]">No tags selected yet</span>
                   )}
                 </div>
               </div>
-
-              {specifics.length > 0 && (
-                <div>
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--foreground-secondary)]">
-                    Specifics
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {specifics.map((specific) => (
-                      <span key={specific} className="rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-2.5 py-1 text-xs font-medium text-[var(--foreground-secondary)]">
-                        {specific}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <div>
                 <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--foreground-secondary)]">
@@ -473,7 +328,7 @@ export default function CreateTaskForm() {
                     { label: 'Task title', done: title.trim().length > 0 },
                     { label: 'Description', done: description.trim().length > 0 },
                     { label: 'Reference assets', done: assets.length > 0 },
-                    { label: 'Requirement tags', done: allRequirements.length > 0 },
+                    { label: 'Requirement tags', done: requirements.length > 0 },
                     { label: 'Pricing', done: bountyValue > 0 },
                     { label: 'Deadline', done: deadline.length > 0 },
                   ].map((item) => (
@@ -514,27 +369,15 @@ export default function CreateTaskForm() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {allRequirements.length > 0 ? (
-                      <>
-                        {REQUIREMENTS.filter((item) => requirements.includes(item.value)).map((item) => (
-                          <span key={item.value} className={`rounded-full border px-2.5 py-1 text-xs font-medium ${item.className}`}>
-                            {item.label}
-                          </span>
-                        ))}
-                        {customRequirements.map((req) => (
-                          <span key={req} className="rounded-full border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.08)] px-2.5 py-1 text-xs font-medium text-white">
-                            {req}
-                          </span>
-                        ))}
-                      </>
+                    {requirements.length > 0 ? (
+                      REQUIREMENTS.filter((item) => requirements.includes(item.value)).map((item) => (
+                        <span key={item.value} className={`rounded-full border px-2.5 py-1 text-xs font-medium ${item.className}`}>
+                          {item.label}
+                        </span>
+                      ))
                     ) : (
                       <span className="text-xs text-[var(--foreground-secondary)]">Tags appear here once selected.</span>
                     )}
-                    {specifics.map((specific) => (
-                      <span key={specific} className="rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-2.5 py-1 text-xs font-medium text-[var(--foreground-secondary)]">
-                        {specific}
-                      </span>
-                    ))}
                   </div>
                   <div className="flex items-center justify-between text-xs text-[var(--foreground-secondary)]">
                     <span>{quantity} needed</span>
@@ -544,22 +387,16 @@ export default function CreateTaskForm() {
               </div>
             </div>
 
-            {state.error && (
-              <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                {state.error}
-              </p>
-            )}
-
             <button
+              form="create-task-form"
               type="submit"
-              disabled={pending || !canSubmit}
-              className="btn-lab mt-4 w-full rounded-lg py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn-lab mt-2 w-full rounded-lg py-3 text-sm font-semibold transition-colors"
             >
-              {pending ? 'Posting task...' : 'Post task'}
+              Post task
             </button>
           </div>
         </aside>
-      </form>
+      </div>
     </div>
   )
 }
