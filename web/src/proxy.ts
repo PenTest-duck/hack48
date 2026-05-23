@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PUBLIC_PATHS = ['/login', '/signup']
+const AUTH_PATHS = ['/login', '/signup']
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -36,7 +36,9 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const pathname = request.nextUrl.pathname
-  const isPublic = PUBLIC_PATHS.some((path) => pathname.startsWith(path))
+  const isHomePage = pathname === '/'
+  const isAuthPage = AUTH_PATHS.some((path) => pathname.startsWith(path))
+  const isPublic = isHomePage || isAuthPage
 
   if (!user && !isPublic) {
     return NextResponse.redirect(new URL('/login', request.url))
@@ -51,7 +53,7 @@ export async function proxy(request: NextRequest) {
 
     const role = profile?.role ?? user.user_metadata?.role
 
-    if (pathname === '/') {
+    if (isHomePage) {
       if (role === 'lab') {
         return NextResponse.redirect(new URL('/lab/dashboard', request.url))
       }
@@ -68,7 +70,7 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL('/lab/dashboard', request.url))
     }
 
-    if (isPublic) {
+    if (isAuthPage) {
       return NextResponse.redirect(new URL('/', request.url))
     }
   }

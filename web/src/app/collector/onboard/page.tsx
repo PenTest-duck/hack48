@@ -80,7 +80,7 @@ export default async function OnboardPage() {
                     type="checkbox"
                     name="capabilities"
                     value={opt.value}
-                    className="mt-0.5 rounded border-black/20 bg-transparent"
+                    className="mt-0.5 rounded border-black/20 bg-transparent accent-[#2f9e44]"
                   />
                   <span className="text-sm text-[var(--foreground-secondary)]">{opt.label}</span>
                 </label>

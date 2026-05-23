@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import SubmissionsLive from './submissions-live'
 
+const ADDITIONAL_FILES = ['imu.jsonl', 'intrinsics.json', 'metadata.json', 'poses.jsonl'] as const
+
 export default async function LabTaskPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
@@ -23,10 +25,24 @@ export default async function LabTaskPage({ params }: { params: Promise<{ id: st
 
   const submissions = await Promise.all(
     (rawSubmissions ?? []).map(async (s) => {
-      const { data } = await supabase.storage
-        .from('submissions')
-        .createSignedUrl(s.storage_path, 3600)
-      return { ...s, signedUrl: data?.signedUrl ?? null }
+      const folder = `${id}/${s.collector_id}`
+
+      const [videoResult, ...fileResults] = await Promise.all([
+        supabase.storage.from('recordings').createSignedUrl(`${folder}/video.mp4`, 3600),
+        ...ADDITIONAL_FILES.map(name =>
+          supabase.storage.from('recordings').createSignedUrl(`${folder}/${name}`, 3600)
+        ),
+      ])
+
+      const additionalFiles = Object.fromEntries(
+        ADDITIONAL_FILES.map((name, i) => [name, fileResults[i].data?.signedUrl ?? null])
+      ) as Record<typeof ADDITIONAL_FILES[number], string | null>
+
+      return {
+        ...s,
+        signedUrl: videoResult.data?.signedUrl ?? null,
+        additionalFiles,
+      }
     })
   )
 
@@ -45,7 +61,7 @@ export default async function LabTaskPage({ params }: { params: Promise<{ id: st
             <div className="flex items-center gap-2 mb-1">
               <h1 className="text-xl font-bold text-[var(--foreground)]">{task.title}</h1>
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                task.status === 'open' ? 'bg-[rgba(59,91,219,0.1)] text-[#2a4db8]' : 'bg-[rgba(90,90,90,0.1)] text-[#4b5563]'
+                task.status === 'open' ? 'bg-[rgba(59,91,219,0.1)] text-[var(--lab)]' : 'bg-[rgba(90,90,90,0.1)] text-[#4b5563]'
               }`}>
                 {task.status}
               </span>
@@ -58,7 +74,7 @@ export default async function LabTaskPage({ params }: { params: Promise<{ id: st
                 {task.data_type}
               </span>
               {(task.required_capabilities as string[]).map((cap: string) => (
-                <span key={cap} className="rounded-full border border-[rgba(59,91,219,0.28)] bg-[rgba(59,91,219,0.1)] px-2 py-0.5 text-xs text-[#2a4db8]">
+                <span key={cap} className="rounded-full border border-[rgba(59,91,219,0.28)] bg-[rgba(59,91,219,0.1)] px-2 py-0.5 text-xs text-[var(--lab)]">
                   {cap}
                 </span>
               ))}
@@ -79,7 +95,7 @@ export default async function LabTaskPage({ params }: { params: Promise<{ id: st
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-[rgba(0,0,0,0.07)]">
             <div
-              className="h-full rounded-full bg-[#3b5bdb] transition-all"
+              className="h-full rounded-full bg-[var(--lab)] transition-all"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -95,7 +111,7 @@ export default async function LabTaskPage({ params }: { params: Promise<{ id: st
       </div>
 
       <div className="flex items-center gap-2 mb-4">
-        <span className="h-2 w-2 rounded-full bg-[#2f9e44] animate-pulse" />
+        <span className="h-2 w-2 rounded-full bg-[var(--collector)] animate-pulse" />
         <span className="text-xs text-[var(--foreground-secondary)]">Live — updates automatically when collectors upload</span>
       </div>
 

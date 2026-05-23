@@ -5,6 +5,9 @@ import { createClient } from '@/lib/supabase/client'
 import { approveSubmission, rejectSubmission } from '@/app/actions/submissions'
 import { triggerToast } from '@/components/toast'
 
+const ADDITIONAL_FILES = ['imu.jsonl', 'intrinsics.json', 'metadata.json', 'poses.jsonl'] as const
+type AdditionalFile = typeof ADDITIONAL_FILES[number]
+
 type Submission = {
   id: string
   collector_id: string
@@ -13,6 +16,7 @@ type Submission = {
   metadata: Record<string, unknown> | null
   created_at: string
   signedUrl: string | null
+  additionalFiles: Record<AdditionalFile, string | null>
 }
 
 type Props = {
@@ -39,13 +43,23 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
           filter: `task_id=eq.${taskId}`,
         },
         async (payload) => {
-          const { data } = await supabase.storage
-            .from('submissions')
-            .createSignedUrl(payload.new.storage_path, 3600)
+          const folder = `${taskId}/${payload.new.collector_id}`
+
+          const [videoResult, ...fileResults] = await Promise.all([
+            supabase.storage.from('recordings').createSignedUrl(`${folder}/video.mp4`, 3600),
+            ...ADDITIONAL_FILES.map(name =>
+              supabase.storage.from('recordings').createSignedUrl(`${folder}/${name}`, 3600)
+            ),
+          ])
+
+          const additionalFiles = Object.fromEntries(
+            ADDITIONAL_FILES.map((name, i) => [name, fileResults[i].data?.signedUrl ?? null])
+          ) as Record<AdditionalFile, string | null>
 
           const newSubmission: Submission = {
             ...(payload.new as Submission),
-            signedUrl: data?.signedUrl ?? null,
+            signedUrl: videoResult.data?.signedUrl ?? null,
+            additionalFiles,
           }
 
           setSubmissions(prev => [newSubmission, ...prev])
@@ -85,7 +99,7 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
         <p className="font-medium text-[var(--foreground)]">Waiting for submissions</p>
         <p className="mt-1 text-sm text-[var(--foreground-secondary)]">This page updates live when collectors upload data</p>
         <div className="mt-4 flex items-center justify-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-[#2f9e44] animate-pulse" />
+          <span className="h-2 w-2 rounded-full bg-[var(--collector)] animate-pulse" />
           <span className="text-xs text-[var(--foreground-secondary)]">Listening for uploads</span>
         </div>
       </div>
@@ -145,6 +159,8 @@ function SubmissionCard({
     rejected: 'bg-[rgba(210,100,100,0.1)] text-[#c0392b]',
   }
 
+  const availableFiles = ADDITIONAL_FILES.filter(name => submission.additionalFiles[name] !== null)
+
   return (
     <div className="surface-panel overflow-hidden">
       {submission.signedUrl ? (
@@ -162,7 +178,7 @@ function SubmissionCard({
 
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusStyles[submission.status]}`}>
                 {submission.status}
@@ -190,6 +206,21 @@ function SubmissionCard({
                     {meta.gps_lat.toFixed(4)}, {meta.gps_lng.toFixed(4)}
                   </span>
                 )}
+              </div>
+            )}
+
+            {availableFiles.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {availableFiles.map(name => (
+                  <a
+                    key={name}
+                    href={submission.additionalFiles[name]!}
+                    download={name}
+                    className="rounded border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-1 text-xs text-[var(--foreground-secondary)] transition-colors hover:text-[var(--foreground)]"
+                  >
+                    ↓ {name}
+                  </a>
+                ))}
               </div>
             )}
           </div>

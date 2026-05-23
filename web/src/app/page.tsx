@@ -1,15 +1,6 @@
 import Link from 'next/link'
-
-function LogoMark() {
-  return (
-    <div className="grid grid-cols-2 gap-1">
-      <span className="h-2.5 w-2.5 rounded-[2px] bg-[var(--foreground)]" />
-      <span className="h-2.5 w-2.5 rounded-[2px] bg-[var(--lab)]" />
-      <span className="h-2.5 w-2.5 rounded-[2px] bg-[var(--collector)]" />
-      <span className="h-2.5 w-2.5 rounded-[2px] bg-[var(--foreground)]/20" />
-    </div>
-  )
-}
+import LogoMark from '@/components/logo-mark'
+import ThemeToggle from '@/components/theme-toggle'
 
 export default function Home() {
   return (
@@ -26,8 +17,8 @@ export default function Home() {
           <nav className="hidden items-center gap-6 text-sm text-[var(--foreground-secondary)] md:flex">
             <Link href="/signup" className="transition-colors hover:text-[var(--foreground)]">Labs</Link>
             <Link href="/signup" className="transition-colors hover:text-[var(--foreground)]">Collectors</Link>
-            <Link href="/signup" className="transition-colors hover:text-[var(--foreground)]">How it works</Link>
             <Link href="/login" className="transition-colors hover:text-[var(--foreground)]">Login</Link>
+            <ThemeToggle />
             <Link
               href="/signup"
               className="rounded-lg bg-[var(--foreground)] px-4 py-2 font-medium text-white transition-colors hover:bg-[#333]"

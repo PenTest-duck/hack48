@@ -3,6 +3,8 @@
 import { useActionState, useState } from 'react'
 import { signUp } from '@/app/actions/auth'
 import Link from 'next/link'
+import LogoMark from '@/components/logo-mark'
+import ThemeToggle from '@/components/theme-toggle'
 
 const isSupabaseConfigured = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -18,7 +20,15 @@ export default function SignupPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4 py-8">
+      <div className="fixed top-4 right-4">
+        <ThemeToggle />
+      </div>
       <div className="surface-panel w-full max-w-md p-8">
+        <Link href="/" className="mb-8 flex items-center gap-2.5">
+          <LogoMark />
+          <span className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--foreground)]">DataMarket</span>
+        </Link>
+
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-[var(--foreground)]">Create account</h1>
           <p className="mt-1 text-sm text-[var(--foreground-secondary)]">Join the data marketplace</p>
@@ -112,7 +122,7 @@ export default function SignupPage() {
           <button
             type="submit"
             disabled={pending || !role || !isSupabaseConfigured}
-            className={`w-full rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-40 ${
+            className={`w-full rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
               role === 'collector' ? 'btn-collector' : 'btn-lab'
             }`}
           >

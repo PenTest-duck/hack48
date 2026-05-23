@@ -3,6 +3,8 @@
 import { useActionState } from 'react'
 import { signIn } from '@/app/actions/auth'
 import Link from 'next/link'
+import LogoMark from '@/components/logo-mark'
+import ThemeToggle from '@/components/theme-toggle'
 
 const isSupabaseConfigured = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -17,7 +19,15 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4">
+      <div className="fixed top-4 right-4">
+        <ThemeToggle />
+      </div>
       <div className="surface-panel w-full max-w-md p-8">
+        <Link href="/" className="mb-8 flex items-center gap-2.5">
+          <LogoMark />
+          <span className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--foreground)]">DataMarket</span>
+        </Link>
+
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-[var(--foreground)]">Welcome back</h1>
           <p className="mt-1 text-sm text-[var(--foreground-secondary)]">Sign in to your account</p>
@@ -63,7 +73,7 @@ export default function LoginPage() {
         </form>
 
         <p className="mt-6 text-center text-sm text-[var(--foreground-secondary)]">
-          No account?{' '}
+          Don&apos;t have an account?{' '}
           <Link href="/signup" className="font-medium text-[var(--foreground)] hover:underline">
             Sign up
           </Link>

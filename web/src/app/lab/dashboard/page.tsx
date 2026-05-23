@@ -76,7 +76,7 @@ export default async function LabDashboard() {
                 </div>
                 <span className={`rounded-full px-2 py-1 text-xs font-medium ${
                   task.status === 'open'
-                    ? 'bg-[rgba(59,91,219,0.1)] text-[#2a4db8]'
+                    ? 'bg-[rgba(59,91,219,0.1)] text-[var(--lab)]'
                     : 'bg-[rgba(90,90,90,0.1)] text-[#4b5563]'
                 }`}>
                   {task.status}
@@ -84,7 +84,7 @@ export default async function LabDashboard() {
               </div>
               <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[rgba(0,0,0,0.07)]">
                 <div
-                  className="h-full rounded-full bg-[#3b5bdb]"
+                  className="h-full rounded-full bg-[var(--lab)]"
                   style={{ width: `${Math.min(100, (task.quantity_filled / task.quantity_needed) * 100)}%` }}
                 />
               </div>
