@@ -26,6 +26,8 @@ const analysisFilenames: Record<typeof analysisKinds[number], string> = {
   temporal_actions: "temporal-actions.json",
 };
 
+const terminalRecordingStatuses = new Set(["analyzed", "analysis_failed"]);
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -62,6 +64,19 @@ Deno.serve(async (req) => {
   // 3) Service-role client writes the rows (bypasses RLS).
   const admin = createClient(supabaseUrl, serviceKey);
 
+  const { data: existingRecording, error: existingRecordingErr } = await admin
+    .from("recordings")
+    .select("id,is_scoring,status")
+    .eq("id", recordingId)
+    .maybeSingle();
+  if (existingRecordingErr) return json({ error: `recordings lookup: ${existingRecordingErr.message}` }, 500);
+
+  const existingRecordingStatus = typeof existingRecording?.status === "string" ? existingRecording.status : null;
+  const recordingStatus = existingRecordingStatus && terminalRecordingStatuses.has(existingRecordingStatus)
+    ? existingRecordingStatus
+    : "analyzing";
+  const isScoring = existingRecording?.is_scoring === false ? false : true;
+
   const { error: dbErr } = await admin.from("recordings").upsert({
     id: recordingId,
     bounty_id: taskId,
@@ -74,8 +89,8 @@ Deno.serve(async (req) => {
     gps_accuracy_m: numOrNull(body.gps_accuracy_m),
     storage_path: storagePath,
     streams,
-    status: "analyzing",
-    is_scoring: true,
+    status: recordingStatus,
+    is_scoring: isScoring,
   });
   if (dbErr) return json({ error: `recordings: ${dbErr.message}` }, 500);
 
