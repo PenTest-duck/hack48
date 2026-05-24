@@ -2,11 +2,24 @@ from __future__ import annotations
 
 import shutil
 import sys
+import threading
 import urllib.request
 from pathlib import Path
 
 import cv2
 import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+
+from .types import ArmSample, HandSample, Landmark, PoseLandmark, TeleopSample
+
+
+POSE_RIGHT_SHOULDER = 12
+POSE_RIGHT_ELBOW = 14
+POSE_RIGHT_WRIST = 16
+POSE_LEFT_SHOULDER = 11
+POSE_LEFT_ELBOW = 13
+POSE_LEFT_WRIST = 15
 
 
 POSE_MODEL_URL = (
@@ -74,3 +87,179 @@ def open_camera(camera_index: int, width: int, height: int) -> cv2.VideoCapture:
 def frame_to_mp_image(frame) -> mp.Image:
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     return mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+
+
+def create_pose_landmarker(
+    *,
+    model_path: Path,
+    detection_confidence: float,
+    presence_confidence: float,
+    tracking_confidence: float,
+    result_callback,
+) -> vision.PoseLandmarker:
+    options = vision.PoseLandmarkerOptions(
+        base_options=python.BaseOptions(model_asset_path=str(model_path)),
+        running_mode=vision.RunningMode.LIVE_STREAM,
+        num_poses=1,
+        min_pose_detection_confidence=detection_confidence,
+        min_pose_presence_confidence=presence_confidence,
+        min_tracking_confidence=tracking_confidence,
+        output_segmentation_masks=False,
+        result_callback=result_callback,
+    )
+    return vision.PoseLandmarker.create_from_options(options)
+
+
+def create_hand_landmarker(
+    *,
+    model_path: Path,
+    max_hands: int,
+    detection_confidence: float,
+    presence_confidence: float,
+    tracking_confidence: float,
+    result_callback,
+) -> vision.HandLandmarker:
+    options = vision.HandLandmarkerOptions(
+        base_options=python.BaseOptions(model_asset_path=str(model_path)),
+        running_mode=vision.RunningMode.LIVE_STREAM,
+        num_hands=max_hands,
+        min_hand_detection_confidence=detection_confidence,
+        min_hand_presence_confidence=presence_confidence,
+        min_tracking_confidence=tracking_confidence,
+        result_callback=result_callback,
+    )
+    return vision.HandLandmarker.create_from_options(options)
+
+
+class LatestPoseResult:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._result = None
+        self._timestamp_ms = -1
+
+    def update(self, result, _output_image, timestamp_ms: int) -> None:
+        with self._lock:
+            self._result = result
+            self._timestamp_ms = timestamp_ms
+
+    def best_arm_sample(self, arm: str) -> ArmSample | None:
+        with self._lock:
+            result = self._result
+            timestamp_ms = self._timestamp_ms
+        if result is None or not result.pose_landmarks or not result.pose_world_landmarks:
+            return None
+
+        if arm == "right":
+            indices = (POSE_RIGHT_SHOULDER, POSE_RIGHT_ELBOW, POSE_RIGHT_WRIST)
+        elif arm == "left":
+            indices = (POSE_LEFT_SHOULDER, POSE_LEFT_ELBOW, POSE_LEFT_WRIST)
+        else:
+            raise ValueError(f"Unknown arm selection: {arm}")
+
+        image_lms = result.pose_landmarks[0]
+        world_lms = result.pose_world_landmarks[0]
+        shoulder_world = world_lms[indices[0]]
+        elbow_world = world_lms[indices[1]]
+        wrist_world = world_lms[indices[2]]
+        wrist_image = image_lms[indices[2]]
+
+        return ArmSample(
+            shoulder=PoseLandmark(
+                shoulder_world.x,
+                shoulder_world.y,
+                shoulder_world.z,
+                visibility=shoulder_world.visibility,
+            ),
+            elbow=PoseLandmark(
+                elbow_world.x, elbow_world.y, elbow_world.z, visibility=elbow_world.visibility
+            ),
+            wrist=PoseLandmark(
+                wrist_world.x, wrist_world.y, wrist_world.z, visibility=wrist_world.visibility
+            ),
+            wrist_image_xy=(wrist_image.x, wrist_image.y),
+            timestamp_ms=timestamp_ms,
+        )
+
+
+class LatestHandResult:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._result = None
+        self._timestamp_ms = -1
+
+    def update(self, result, _output_image, timestamp_ms: int) -> None:
+        with self._lock:
+            self._result = result
+            self._timestamp_ms = timestamp_ms
+
+    def best_hand_sample(self) -> HandSample | None:
+        with self._lock:
+            result = self._result
+            timestamp_ms = self._timestamp_ms
+        return _extract_best_hand(result, timestamp_ms)
+
+    def all_hand_samples(self) -> list[HandSample]:
+        with self._lock:
+            result = self._result
+            timestamp_ms = self._timestamp_ms
+        if result is None or not result.hand_landmarks:
+            return []
+        samples: list[HandSample] = []
+        for idx in range(len(result.hand_landmarks)):
+            handedness = result.handedness[idx] if idx < len(result.handedness) else []
+            label = handedness[0].category_name if handedness else "Hand"
+            score = handedness[0].score if handedness else 0.0
+            landmarks = [
+                Landmark(x=point.x, y=point.y, z=point.z)
+                for point in result.hand_landmarks[idx]
+            ]
+            samples.append(
+                HandSample(
+                    landmarks=landmarks,
+                    handedness=label,
+                    confidence=score,
+                    timestamp_ms=timestamp_ms,
+                )
+            )
+        return samples
+
+
+def _extract_best_hand(result, timestamp_ms: int) -> HandSample | None:
+    if result is None or not result.hand_landmarks:
+        return None
+    best_index = 0
+    best_score = -1.0
+    for idx in range(len(result.hand_landmarks)):
+        handedness = result.handedness[idx] if idx < len(result.handedness) else []
+        score = handedness[0].score if handedness else 0.0
+        if score > best_score:
+            best_index = idx
+            best_score = score
+    landmarks = [
+        Landmark(x=point.x, y=point.y, z=point.z)
+        for point in result.hand_landmarks[best_index]
+    ]
+    handedness = result.handedness[best_index] if best_index < len(result.handedness) else []
+    label = handedness[0].category_name if handedness else "Hand"
+    score = handedness[0].score if handedness else 0.0
+    return HandSample(landmarks=landmarks, handedness=label, confidence=score, timestamp_ms=timestamp_ms)
+
+
+def fuse_samples(
+    *, arm: ArmSample | None, hands: list[HandSample], timestamp_ms: int
+) -> TeleopSample:
+    if arm is None:
+        chosen_hand = max(hands, key=lambda h: h.confidence, default=None)
+        return TeleopSample(arm=None, hand=chosen_hand, timestamp_ms=timestamp_ms)
+
+    if not hands:
+        return TeleopSample(arm=arm, hand=None, timestamp_ms=timestamp_ms)
+
+    wrist_x, wrist_y = arm.wrist_image_xy
+
+    def distance(hand: HandSample) -> float:
+        wrist_landmark = hand.landmarks[0]
+        return (wrist_landmark.x - wrist_x) ** 2 + (wrist_landmark.y - wrist_y) ** 2
+
+    chosen_hand = min(hands, key=distance)
+    return TeleopSample(arm=arm, hand=chosen_hand, timestamp_ms=timestamp_ms)
