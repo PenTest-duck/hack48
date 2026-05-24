@@ -27,6 +27,7 @@ export default async function LabLayout({ children }: { children: React.ReactNod
             <span className="role-pill-lab rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]">Lab</span>
             <Link href="/lab/dashboard" className="hidden text-sm text-[var(--foreground-secondary)] transition-colors hover:text-white sm:inline">Dashboard</Link>
             <Link href="/lab/tasks/new" className="hidden text-sm text-[var(--foreground-secondary)] transition-colors hover:text-white sm:inline">New Task</Link>
+            <Link href="/lab/search" className="hidden text-sm text-[var(--foreground-secondary)] transition-colors hover:text-white sm:inline">Search</Link>
           </div>
           <div className="flex items-center gap-3 sm:gap-4">
             <span className="hidden text-sm text-[var(--foreground-secondary)] sm:inline">{profile?.display_name}</span>
