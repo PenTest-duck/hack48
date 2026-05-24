@@ -39,6 +39,7 @@ export default async function CollectorLayout({ children }: { children: React.Re
             <span className="role-pill-collector rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]">Collector</span>
             <Link href="/collector/tasks" className="text-sm text-[var(--foreground-secondary)] transition-colors hover:text-white">Tasks</Link>
             <Link href="/collector/earnings" className="text-sm text-[var(--foreground-secondary)] transition-colors hover:text-white">Earnings</Link>
+            <Link href="/collector/leaderboard" className="text-sm text-[var(--foreground-secondary)] transition-colors hover:text-white">Leaderboard</Link>
           </div>
           <div className="flex items-center gap-3 sm:gap-4">
             <span className="hidden text-sm text-[var(--foreground-secondary)] sm:inline">{profile?.display_name}</span>
