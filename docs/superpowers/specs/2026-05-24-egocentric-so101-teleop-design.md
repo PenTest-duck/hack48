@@ -74,12 +74,16 @@ The arm features are computed in a shoulder-local frame so whole-body translatio
 elbow_angle = acos( (upper_arm · forearm) / (|upper_arm| * |forearm|) )
 ```
 
+Range: ~0 when the arm is fully straight (vectors aligned) to ~π when the arm is fully folded against itself (vectors anti-parallel). This is the geometric angle between the two segments, not the anatomical "elbow flexion" angle.
+
 `shoulder_lift` is the pitch of `upper_arm` relative to the body's vertical axis (Pose convention: +y is down):
 
 ```
 horizontal = sqrt(upper_arm.x² + upper_arm.z²)
-shoulder_lift = atan2(horizontal, -upper_arm.y)
+shoulder_lift = atan2(horizontal, upper_arm.y)
 ```
+
+Range: ~0 when arm hangs straight down (upper_arm.y > 0), ~π/2 when arm is horizontal, ~π when arm points straight up.
 
 `shoulder_pan` is the yaw of `upper_arm` around the body's vertical axis:
 
