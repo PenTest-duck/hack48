@@ -225,7 +225,9 @@ struct LabTaskDetailView: View {
                 } else if referencePath != nil {
                     ReferenceVideoView(taskId: task.id.uuidString)
                     NavigationLink {
-                        RecordView(referenceTaskId: task.id.uuidString)
+                        RecordView(referenceTaskId: task.id.uuidString,
+                                   referenceTaskTitle: task.title,
+                                   referenceTaskDescription: task.description)
                     } label: {
                         Label("Re-record reference", systemImage: "arrow.triangle.2.circlepath")
                     }
@@ -233,7 +235,9 @@ struct LabTaskDetailView: View {
                     Text("Record an example clip in-app so collectors — and the scoring model — know what a good capture looks like.")
                         .font(.caption).foregroundStyle(.secondary)
                     NavigationLink {
-                        RecordView(referenceTaskId: task.id.uuidString)
+                        RecordView(referenceTaskId: task.id.uuidString,
+                                   referenceTaskTitle: task.title,
+                                   referenceTaskDescription: task.description)
                     } label: {
                         Label("Record reference video", systemImage: "video.badge.plus")
                     }

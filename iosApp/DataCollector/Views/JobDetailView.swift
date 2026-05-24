@@ -17,6 +17,9 @@ struct JobDetailView: View {
     @State private var pollTrigger = 0
     @State private var coachingProfile: CoachingProfile?   // task-specific live targets
     @State private var coachingDebug: String?              // why it loaded / didn't
+    @State private var coachingBrief: String?              // lab's AI brief for the live coach
+
+    @State private var showCoach = false   // AI coach presented as a full-screen modal
 
     init(job: Job) {
         self.job = job
@@ -32,6 +35,14 @@ struct JobDetailView: View {
             Section { jobInfo }
             Section("Reference example") {
                 ReferenceVideoView(taskId: job.id.uuidString)
+                if coachingBrief != nil {
+                    Label("AI brief ready for coaching", systemImage: "checkmark.seal.fill")
+                        .font(.caption).foregroundStyle(Color.appCollector)
+                } else {
+                    Label("No AI brief yet — lab should re-record the reference",
+                          systemImage: "exclamationmark.triangle")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section("Your recordings (\(recordings.count))") {
                 if recordings.isEmpty {
@@ -51,12 +62,26 @@ struct JobDetailView: View {
             let loaded = await CoachingService.load(taskId: job.id.uuidString)
             coachingProfile = loaded.profile
             coachingDebug = loaded.debug
+            coachingBrief = loaded.brief
         }
         .refreshable { await loadScores() }
         .safeAreaInset(edge: .bottom) { recordBar }
         .sheet(item: $playing) { VideoPlayerSheet(url: $0.url) }
         .sheet(item: $detail) { item in
             RecordingDetailView(recording: item.recording, taskId: job.id.uuidString)
+        }
+        // Present the AI coach as a full-screen modal (not a nav push) — a clean,
+        // top-level context like the beta, instead of pushed two levels deep.
+        .fullScreenCover(isPresented: $showCoach) {
+            NavigationStack {
+                LiveCoachView(taskTitle: job.title, taskDescription: job.description,
+                              brief: coachingBrief)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Done") { showCoach = false }
+                        }
+                    }
+            }
         }
         .alert("Upload failed", isPresented: .constant(errorMessage != nil)) {
             Button("OK") { errorMessage = nil }
@@ -153,15 +178,29 @@ struct JobDetailView: View {
     // MARK: - Record button
 
     private var recordBar: some View {
-        NavigationLink {
-            RecordView(job: job, profile: coachingProfile, profileDebug: coachingDebug)
-        } label: {
-            Label("Record", systemImage: "record.circle")
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(.red, in: RoundedRectangle(cornerRadius: 14))
-                .foregroundStyle(.white)
+        VStack(spacing: 10) {
+            // Real-time AI coaching happens here (before recording) — it can't run
+            // during capture (camera/GPU is owned by the recorder).
+            if !SupabaseConfig.geminiAPIKey.isEmpty {
+                Button { showCoach = true } label: {
+                    Label("Practice with AI coach", systemImage: "sparkles")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(Color.appAccent.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
+                        .foregroundStyle(Color.appAccent)
+                }
+            }
+            NavigationLink {
+                RecordView(job: job, profile: coachingProfile, profileDebug: coachingDebug)
+            } label: {
+                Label("Record", systemImage: "record.circle")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(.red, in: RoundedRectangle(cornerRadius: 14))
+                    .foregroundStyle(.white)
+            }
         }
         .padding(.horizontal).padding(.vertical, 10)
         .background(.bar)

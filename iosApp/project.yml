@@ -16,6 +16,9 @@ packages:
   Supabase:
     url: https://github.com/supabase/supabase-swift
     from: "2.0.0"
+  WhisperKit:
+    url: https://github.com/argmaxinc/WhisperKit
+    from: "0.9.0"
 
 settings:
   base:
@@ -35,6 +38,8 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
+      - package: WhisperKit
+        product: WhisperKit
     info:
       path: DataCollector/Info.plist
       properties:
@@ -45,6 +50,8 @@ targets:
         NSCameraUsageDescription: "Used to record the task videos you contribute."
         NSLocationWhenInUseUsageDescription: "Tags your recordings with where they were captured so labs know the location."
         NSMotionUsageDescription: "Records device motion (accelerometer, gyroscope, magnetometer) alongside your video."
+        NSMicrophoneUsageDescription: "Records your narration so we can transcribe what you say during the capture."
+        NSSpeechRecognitionUsageDescription: "Transcribes your narration on-device into a timestamped transcript saved with the recording."
         # --- Dev convenience: expose the app's Documents folder in the Files app ---
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true

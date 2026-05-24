@@ -9,10 +9,12 @@ struct RecordingBundle {
     let posesURL: URL
     let intrinsicsURL: URL
     let depthURL: URL
+    let transcriptURL: URL
     let metadataURL: URL
 
     var streamFilenames: [String] {
-        [videoURL, imuURL, posesURL, intrinsicsURL, depthURL, metadataURL].map(\.lastPathComponent)
+        [videoURL, imuURL, posesURL, intrinsicsURL, depthURL, transcriptURL, metadataURL]
+            .map(\.lastPathComponent)
     }
 }
 
@@ -39,6 +41,7 @@ enum RecordingStore {
             posesURL: folder.appendingPathComponent("poses.jsonl"),
             intrinsicsURL: folder.appendingPathComponent("intrinsics.json"),
             depthURL: folder.appendingPathComponent("depth.bin"),
+            transcriptURL: folder.appendingPathComponent("transcript.json"),
             metadataURL: folder.appendingPathComponent("metadata.json")
         )
     }
@@ -47,6 +50,22 @@ enum RecordingStore {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(metadata).write(to: url, options: .atomic)
+    }
+
+    /// Write the speech transcript: full text + timestamped segments. `status` is a
+    /// temporary debug field (so an empty transcript explains itself).
+    static func writeTranscript(_ segments: [WhisperTranscriber.Segment],
+                                status: String, to url: URL) throws {
+        struct Transcript: Codable {
+            let text: String
+            let segments: [WhisperTranscriber.Segment]
+            let status: String
+        }
+        let text = segments.map(\.text).joined(separator: " ")
+        let transcript = Transcript(text: text, segments: segments, status: status)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(transcript).write(to: url, options: .atomic)
     }
 
     /// Total bytes used by a bundle folder.

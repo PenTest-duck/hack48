@@ -28,8 +28,12 @@
 	<string>Used to record the task videos you contribute.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Tags your recordings with where they were captured so labs know the location.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Records your narration so we can transcribe what you say during the capture.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Records device motion (accelerometer, gyroscope, magnetometer) alongside your video.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Transcribes your narration on-device into a timestamped transcript saved with the recording.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UILaunchScreen</key>
