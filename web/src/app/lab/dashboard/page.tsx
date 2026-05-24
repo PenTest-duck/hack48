@@ -11,7 +11,22 @@ export default async function LabDashboard() {
     .eq('lab_id', user!.id)
     .order('created_at', { ascending: false })
 
+  // Fetch submission counts per task (all received, regardless of approval status)
+  const taskIds = tasks?.map(t => t.id) ?? []
+  const { data: submissionCounts } = taskIds.length
+    ? await supabase
+        .from('submissions')
+        .select('task_id, status')
+        .in('task_id', taskIds)
+    : { data: [] }
+
+  const receivedByTask: Record<string, number> = {}
+  for (const s of submissionCounts ?? []) {
+    receivedByTask[s.task_id] = (receivedByTask[s.task_id] ?? 0) + 1
+  }
+
   const totalSpend = tasks?.reduce((sum, t) => sum + (t.bounty_amount * t.quantity_filled), 0) ?? 0
+  const totalReceived = Object.values(receivedByTask).reduce((sum, n) => sum + n, 0)
 
   return (
     <div>
@@ -32,9 +47,7 @@ export default async function LabDashboard() {
           <div className="mt-1 text-sm text-[var(--foreground-secondary)]">Total tasks</div>
         </div>
         <div className="surface-panel p-4">
-          <div className="text-2xl font-bold text-white">
-            {tasks?.reduce((sum, t) => sum + t.quantity_filled, 0) ?? 0}
-          </div>
+          <div className="text-2xl font-bold text-white">{totalReceived}</div>
           <div className="mt-1 text-sm text-[var(--foreground-secondary)]">Submissions received</div>
         </div>
         <div className="surface-panel p-4">
@@ -66,13 +79,17 @@ export default async function LabDashboard() {
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="font-semibold text-white">{task.title}</h3>
-                  <div className="flex items-center gap-3 mt-2">
+                  <div className="flex items-center gap-3 mt-2 flex-wrap">
                     <span className="text-sm text-[var(--foreground-secondary)]">
                       ${task.bounty_amount} / submission
                     </span>
                     <span className="text-sm text-[var(--foreground-secondary)]">·</span>
                     <span className="text-sm text-[var(--foreground-secondary)]">
-                      {task.quantity_filled} / {task.quantity_needed} collected
+                      {receivedByTask[task.id] ?? 0} / {task.quantity_needed} received
+                    </span>
+                    <span className="text-sm text-[var(--foreground-secondary)]">·</span>
+                    <span className="text-sm text-[#aebeff]">
+                      {task.quantity_filled} / {task.quantity_needed} approved
                     </span>
                   </div>
                 </div>
@@ -84,10 +101,14 @@ export default async function LabDashboard() {
                   {task.status}
                 </span>
               </div>
-              {/* Progress bar */}
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[rgba(255,255,255,0.08)]">
+              {/* Progress bars: received (dim) behind approved (solid) */}
+              <div className="mt-3 relative h-1.5 overflow-hidden rounded-full bg-[rgba(255,255,255,0.08)]">
                 <div
-                  className="h-full rounded-full bg-[#3b5bdb]"
+                  className="absolute inset-y-0 left-0 rounded-full bg-[rgba(59,91,219,0.35)]"
+                  style={{ width: `${Math.min(100, ((receivedByTask[task.id] ?? 0) / task.quantity_needed) * 100)}%` }}
+                />
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full bg-[#3b5bdb]"
                   style={{ width: `${Math.min(100, (task.quantity_filled / task.quantity_needed) * 100)}%` }}
                 />
               </div>
