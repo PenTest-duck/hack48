@@ -462,6 +462,32 @@ body:has(.studio-scope) { overflow: hidden; }
   background: #050507;
   display: flex; align-items: center; justify-content: center;
 }
+
+/* 2D viewport stacks the video stage over a subtitle bar (caption is never on the video). */
+.studio-scope .viewport--2d { flex-direction: column; }
+.studio-scope .viewport--2d .vp { height: auto; flex: 1; min-height: 0; }
+
+.studio-scope .vp-caption {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 9px 18px;
+  background: #050507;
+  border-top: 1px solid var(--studio-line);
+  text-align: center;
+}
+.studio-scope .vp-caption span {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--studio-text);
+  max-width: 760px;
+}
+.studio-scope .vp-caption .vp-caption__idle {
+  color: var(--studio-text-3);
+  letter-spacing: 0.3em;
+  font-size: 12px;
+}
 .studio-scope .vp__stage {
   position: relative;
   height: 100%;

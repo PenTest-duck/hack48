@@ -90,7 +90,7 @@ export type StudioData = {
   } | null
   siblings: SiblingRecording[]
   jobs: AnalysisJobPayload[]
-  streamUrls: Record<'video.mp4' | 'imu.jsonl' | 'poses.jsonl' | 'intrinsics.json' | 'depth.bin', string | null>
+  streamUrls: Record<'video.mp4' | 'imu.jsonl' | 'poses.jsonl' | 'intrinsics.json' | 'depth.bin' | 'transcript.json', string | null>
   splatScene: SplatScenePayload | null
 }
 
@@ -141,6 +141,9 @@ type ActionSeg = {
   reason: string
 }
 
+/** A speech transcript phrase, timed in seconds from recording start. */
+type TranscriptSeg = { start: number; end: number; text: string }
+
 type ImuSample = { t: number; ax: number; ay: number; az: number; gx: number; gy: number; gz: number }
 type PoseSample = {
   t: number
@@ -175,6 +178,7 @@ type ArtifactState = {
   imu: ImuSample[] | null
   poses: PoseSample[] | null
   depth: DepthArtifact | null
+  transcript: TranscriptSeg[] | null
 }
 
 const EMPTY_ARTIFACTS: ArtifactState = {
@@ -185,6 +189,7 @@ const EMPTY_ARTIFACTS: ArtifactState = {
   imu: null,
   poses: null,
   depth: null,
+  transcript: null,
 }
 
 /* ═════════════════════════════════════════════════════════════════════
@@ -327,6 +332,7 @@ function useArtifacts(data: StudioData, samWanted: boolean, depthWanted: boolean
   const actionsUrl = data.jobs.find((j) => j.kind === 'temporal_actions' && j.status === 'succeeded')?.signedUrl ?? null
   const imuUrl = data.streamUrls['imu.jsonl']
   const posesUrl = data.streamUrls['poses.jsonl']
+  const transcriptUrl = data.streamUrls['transcript.json']
 
   // hands
   useEffect(() => {
@@ -488,6 +494,30 @@ function useArtifacts(data: StudioData, samWanted: boolean, depthWanted: boolean
       })
     return () => { cancelled = true }
   }, [imuUrl])
+
+  // transcript (speech-to-text phrases; times already 0-based from recording start)
+  useEffect(() => {
+    if (!transcriptUrl) return
+    let cancelled = false
+    setLoading((p) => ({ ...p, transcript: true }))
+    fetch(transcriptUrl)
+      .then((r) => r.json())
+      .then((j: { segments?: Array<{ start_time: number; end_time: number; text: string }> }) => {
+        if (cancelled) return
+        const segs: TranscriptSeg[] = (j.segments ?? [])
+          .filter((s) => typeof s.start_time === 'number' && (s.text ?? '').trim().length > 0)
+          .map((s) => ({ start: s.start_time, end: s.end_time, text: s.text }))
+          .sort((a, b) => a.start - b.start)
+        setArtifacts((p) => ({ ...p, transcript: segs }))
+        setLoading((p) => ({ ...p, transcript: false }))
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setErrors((p) => ({ ...p, transcript: String(e) }))
+        setLoading((p) => ({ ...p, transcript: false }))
+      })
+    return () => { cancelled = true }
+  }, [transcriptUrl])
 
   // poses
   useEffect(() => {
@@ -858,6 +888,12 @@ export default function Studio({ data }: { data: StudioData }) {
     return active.reduce((best, s) => (s.confidence > best.confidence ? s : best))
   }, [artifacts.actions, currentTime])
 
+  // Active transcript phrase for the subtitle bar under the video.
+  const currentCaption = useMemo(() => {
+    if (!artifacts.transcript) return null
+    return artifacts.transcript.find((s) => currentTime >= s.start && currentTime < s.end)?.text ?? null
+  }, [artifacts.transcript, currentTime])
+
   const frame = Math.floor(currentTime * 30)
 
   return (
@@ -920,7 +956,7 @@ export default function Studio({ data }: { data: StudioData }) {
               streams={data.recording.streams}
             />
 
-            <main className="viewport">
+            <main className="viewport viewport--2d">
               <Viewport
                 videoRef={videoRef}
                 videoUrl={data.streamUrls['video.mp4']}
@@ -934,6 +970,13 @@ export default function Studio({ data }: { data: StudioData }) {
                 currentAction={currentAction?.caption ?? '—'}
                 recording={data.recording}
               />
+              {artifacts.transcript && artifacts.transcript.length > 0 && (
+                <div className="vp-caption">
+                  {currentCaption
+                    ? <span>{currentCaption}</span>
+                    : <span className="vp-caption__idle">· · ·</span>}
+                </div>
+              )}
             </main>
           </>
         )}
@@ -2441,6 +2484,18 @@ function Timeline({
             </Lane>
           )}
 
+          {artifacts.transcript && artifacts.transcript.length > 0 ? (
+            <Lane label="transcript" color="#e6b800">
+              {artifacts.transcript.map((seg, i) => (
+                <TranscriptSegBlock key={i} seg={seg} durationS={durationS} />
+              ))}
+            </Lane>
+          ) : (
+            <Lane label="transcript" color="#e6b800" muted>
+              <span className="lane__empty">no transcript</span>
+            </Lane>
+          )}
+
           <div
             className="playhead"
             style={{ left: `calc(${LABEL_W}px + (100% - ${LABEL_W}px) * ${pct / 100})` }}
@@ -2458,6 +2513,20 @@ function Timeline({
         </div>
       </div>
     </footer>
+  )
+}
+
+function TranscriptSegBlock({ seg, durationS }: { seg: TranscriptSeg; durationS: number }) {
+  const left = (seg.start / durationS) * 100
+  const width = Math.max(0.5, ((seg.end - seg.start) / durationS) * 100)
+  return (
+    <div
+      className="actionseg"
+      style={{ left: `${left}%`, width: `${width}%`, background: 'rgba(230,184,0,0.28)' }}
+      title={`"${seg.text}"\n${seg.start.toFixed(2)}–${seg.end.toFixed(2)}s`}
+    >
+      <span>{seg.text}</span>
+    </div>
   )
 }
 

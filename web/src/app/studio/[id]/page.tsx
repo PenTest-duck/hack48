@@ -37,7 +37,7 @@ type RecordingRow = {
   depth_frame_count: number | null
 }
 
-const STREAM_NAMES = ['video.mp4', 'imu.jsonl', 'poses.jsonl', 'intrinsics.json', 'depth.bin'] as const
+const STREAM_NAMES = ['video.mp4', 'imu.jsonl', 'poses.jsonl', 'intrinsics.json', 'depth.bin', 'transcript.json'] as const
 
 export default async function StudioPage({
   params,
