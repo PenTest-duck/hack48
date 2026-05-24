@@ -164,3 +164,95 @@ def _normalize_angle(value: float) -> float:
 
 def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
+
+
+from .types import ArmSample, PoseLandmark
+
+
+@dataclass(frozen=True)
+class ArmFeatures:
+    shoulder_pan: float
+    shoulder_lift: float
+    elbow_flex: float
+
+
+def extract_arm_features(sample: ArmSample, config: MappingConfig | None = None) -> ArmFeatures:
+    cfg = config or MappingConfig()
+    for landmark in (sample.shoulder, sample.elbow, sample.wrist):
+        _validate_pose_landmark(landmark)
+
+    upper_arm = (
+        sample.elbow.x - sample.shoulder.x,
+        sample.elbow.y - sample.shoulder.y,
+        sample.elbow.z - sample.shoulder.z,
+    )
+    forearm = (
+        sample.wrist.x - sample.elbow.x,
+        sample.wrist.y - sample.elbow.y,
+        sample.wrist.z - sample.elbow.z,
+    )
+
+    upper_arm_length = math.sqrt(sum(component * component for component in upper_arm))
+    forearm_length = math.sqrt(sum(component * component for component in forearm))
+    if upper_arm_length < cfg.min_arm_segment:
+        raise ValueError("Upper arm segment is too short")
+    if forearm_length < cfg.min_arm_segment:
+        raise ValueError("Forearm segment is too short")
+
+    cos_elbow = sum(u * f for u, f in zip(upper_arm, forearm)) / (upper_arm_length * forearm_length)
+    cos_elbow = _clamp(cos_elbow, -1.0, 1.0)
+    elbow_flex = math.acos(cos_elbow)
+
+    horizontal = math.sqrt(upper_arm[0] ** 2 + upper_arm[2] ** 2)
+    shoulder_lift = math.atan2(horizontal, upper_arm[1])
+    shoulder_pan = math.atan2(upper_arm[0], upper_arm[2])
+
+    return ArmFeatures(
+        shoulder_pan=shoulder_pan,
+        shoulder_lift=shoulder_lift,
+        elbow_flex=elbow_flex,
+    )
+
+
+def _validate_pose_landmark(landmark: PoseLandmark) -> None:
+    if not all(
+        math.isfinite(value) for value in (landmark.x, landmark.y, landmark.z, landmark.visibility)
+    ):
+        raise ValueError("Pose landmark coordinates and visibility must be finite")
+
+
+class ArmMapper:
+    def __init__(self, config: MappingConfig) -> None:
+        self.config = config
+        self._neutral_features: ArmFeatures | None = None
+        self._neutral_targets: RobotTargets | None = None
+
+    @property
+    def neutral_ready(self) -> bool:
+        return self._neutral_features is not None and self._neutral_targets is not None
+
+    def capture_neutral(self, sample: ArmSample, robot_targets: RobotTargets) -> None:
+        _validate_robot_targets(robot_targets)
+        self._neutral_features = extract_arm_features(sample, self.config)
+        self._neutral_targets = robot_targets
+
+    def map(self, sample: ArmSample) -> RobotTargets:
+        if self._neutral_features is None or self._neutral_targets is None:
+            raise RuntimeError("Neutral arm features have not been captured")
+
+        features = extract_arm_features(sample, self.config)
+        pan_delta = _normalize_angle(features.shoulder_pan - self._neutral_features.shoulder_pan)
+        lift_delta = features.shoulder_lift - self._neutral_features.shoulder_lift
+        elbow_delta = features.elbow_flex - self._neutral_features.elbow_flex
+
+        return RobotTargets(
+            shoulder_pan=self._neutral_targets.shoulder_pan
+            + pan_delta * self.config.shoulder_pan_gain,
+            shoulder_lift=self._neutral_targets.shoulder_lift
+            + lift_delta * self.config.shoulder_lift_gain,
+            elbow_flex=self._neutral_targets.elbow_flex
+            + elbow_delta * self.config.elbow_flex_gain,
+            wrist_flex=self._neutral_targets.wrist_flex,
+            wrist_roll=self._neutral_targets.wrist_roll,
+            gripper=self._neutral_targets.gripper,
+        )

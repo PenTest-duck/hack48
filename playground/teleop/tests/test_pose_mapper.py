@@ -137,3 +137,175 @@ def test_extract_wrist_features_rejects_degenerate_hand_width() -> None:
     sample = hand(index_mcp=(0.50, 0.55, 0.0), pinky_mcp=(0.51, 0.55, 0.0))
     with pytest.raises(ValueError, match="Hand width is too small"):
         extract_wrist_features(sample)
+
+
+from teleop.pose_mapper import ArmMapper, extract_arm_features
+from teleop.types import ArmSample, PoseLandmark
+
+
+def arm(
+    *,
+    shoulder=(0.0, 0.0, 0.0),
+    elbow=(0.0, 0.3, 0.0),
+    wrist=(0.0, 0.6, 0.0),
+    visibility=0.9,
+    wrist_image_xy=(0.5, 0.5),
+    timestamp_ms=1000,
+) -> ArmSample:
+    return ArmSample(
+        shoulder=PoseLandmark(*shoulder, visibility=visibility),
+        elbow=PoseLandmark(*elbow, visibility=visibility),
+        wrist=PoseLandmark(*wrist, visibility=visibility),
+        wrist_image_xy=wrist_image_xy,
+        timestamp_ms=timestamp_ms,
+    )
+
+
+def arm_mapper(**overrides) -> ArmMapper:
+    defaults = dict(
+        shoulder_pan_gain=1.0,
+        shoulder_lift_gain=1.0,
+        elbow_flex_gain=1.0,
+        wrist_flex_gain=30.0,
+        wrist_roll_gain=60.0,
+        gripper_open=80.0,
+        gripper_closed=20.0,
+        pinch_closed_ratio=0.35,
+        pinch_open_ratio=1.40,
+    )
+    defaults.update(overrides)
+    return ArmMapper(MappingConfig(**defaults))
+
+
+def test_arm_hanging_straight_down_yields_zero_elbow_flex_and_shoulder_lift() -> None:
+    sample = arm(
+        shoulder=(0.0, 0.0, 0.0),
+        elbow=(0.0, 0.3, 0.0),
+        wrist=(0.0, 0.6, 0.0),
+    )
+
+    features = extract_arm_features(sample, MappingConfig())
+
+    assert features.elbow_flex == pytest.approx(0.0, abs=1e-6)
+    assert features.shoulder_lift == pytest.approx(0.0, abs=1e-6)
+
+
+def test_arm_horizontal_forward_yields_pi_over_two_shoulder_lift() -> None:
+    sample = arm(
+        shoulder=(0.0, 0.0, 0.0),
+        elbow=(0.0, 0.0, 0.3),
+        wrist=(0.0, 0.0, 0.6),
+    )
+
+    features = extract_arm_features(sample, MappingConfig())
+
+    assert features.shoulder_lift == pytest.approx(math.pi / 2, abs=1e-6)
+    assert features.shoulder_pan == pytest.approx(0.0, abs=1e-6)
+
+
+def test_arm_horizontal_to_right_yields_shoulder_pan_pi_over_two() -> None:
+    sample = arm(
+        shoulder=(0.0, 0.0, 0.0),
+        elbow=(0.3, 0.0, 0.0),
+        wrist=(0.6, 0.0, 0.0),
+    )
+
+    features = extract_arm_features(sample, MappingConfig())
+
+    assert features.shoulder_pan == pytest.approx(math.pi / 2, abs=1e-6)
+
+
+def test_arm_bent_ninety_degrees_yields_pi_over_two_elbow_flex() -> None:
+    sample = arm(
+        shoulder=(0.0, 0.0, 0.0),
+        elbow=(0.0, 0.3, 0.0),
+        wrist=(0.0, 0.3, 0.3),
+    )
+
+    features = extract_arm_features(sample, MappingConfig())
+
+    assert features.elbow_flex == pytest.approx(math.pi / 2, abs=1e-6)
+
+
+def test_arm_fully_folded_yields_pi_elbow_flex() -> None:
+    sample = arm(
+        shoulder=(0.0, 0.0, 0.0),
+        elbow=(0.0, 0.3, 0.0),
+        wrist=(0.0, 0.0, 0.0),
+    )
+
+    features = extract_arm_features(sample, MappingConfig())
+
+    assert features.elbow_flex == pytest.approx(math.pi, abs=1e-6)
+
+
+def test_arm_features_invariant_to_whole_body_translation() -> None:
+    base = arm(
+        shoulder=(0.0, 0.0, 0.0),
+        elbow=(0.1, 0.3, 0.2),
+        wrist=(0.15, 0.5, 0.3),
+    )
+    translated = arm(
+        shoulder=(5.0, -1.0, 2.0),
+        elbow=(5.1, -0.7, 2.2),
+        wrist=(5.15, -0.5, 2.3),
+    )
+
+    base_features = extract_arm_features(base, MappingConfig())
+    translated_features = extract_arm_features(translated, MappingConfig())
+
+    assert base_features.shoulder_pan == pytest.approx(translated_features.shoulder_pan)
+    assert base_features.shoulder_lift == pytest.approx(translated_features.shoulder_lift)
+    assert base_features.elbow_flex == pytest.approx(translated_features.elbow_flex)
+
+
+def test_arm_mapper_neutral_capture_yields_baseline_when_remapped() -> None:
+    mapper = arm_mapper()
+    neutral = arm()
+    mapper.capture_neutral(neutral, baseline_targets())
+
+    targets = mapper.map(neutral)
+
+    assert targets.shoulder_pan == pytest.approx(baseline_targets().shoulder_pan)
+    assert targets.shoulder_lift == pytest.approx(baseline_targets().shoulder_lift)
+    assert targets.elbow_flex == pytest.approx(baseline_targets().elbow_flex)
+
+
+def test_arm_mapper_emits_delta_from_neutral_scaled_by_gain() -> None:
+    mapper = arm_mapper(shoulder_lift_gain=2.0)
+    neutral = arm(elbow=(0.0, 0.3, 0.0), wrist=(0.0, 0.6, 0.0))
+    moved = arm(elbow=(0.0, 0.0, 0.3), wrist=(0.0, 0.0, 0.6))
+    mapper.capture_neutral(neutral, baseline_targets())
+
+    targets = mapper.map(moved)
+
+    expected_delta = math.pi / 2 - 0.0
+    assert targets.shoulder_lift == pytest.approx(
+        baseline_targets().shoulder_lift + expected_delta * 2.0
+    )
+
+
+def test_arm_mapper_map_requires_neutral_capture() -> None:
+    mapper = arm_mapper()
+    with pytest.raises(RuntimeError, match="Neutral arm features have not been captured"):
+        mapper.map(arm())
+
+
+def test_arm_features_rejects_degenerate_upper_arm() -> None:
+    sample = arm(
+        shoulder=(0.0, 0.0, 0.0),
+        elbow=(0.0, 0.001, 0.0),
+        wrist=(0.0, 0.5, 0.0),
+    )
+    with pytest.raises(ValueError, match="Upper arm segment is too short"):
+        extract_arm_features(sample, MappingConfig())
+
+
+def test_arm_features_rejects_degenerate_forearm() -> None:
+    sample = arm(
+        shoulder=(0.0, 0.0, 0.0),
+        elbow=(0.0, 0.3, 0.0),
+        wrist=(0.0, 0.301, 0.0),
+    )
+    with pytest.raises(ValueError, match="Forearm segment is too short"):
+        extract_arm_features(sample, MappingConfig())
