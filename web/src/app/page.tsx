@@ -100,6 +100,9 @@ function NavAuth() {
         {user.role === 'lab' && (
           <Link href="/lab/tasks/new" className="transition-colors hover:text-white">New Task</Link>
         )}
+        {user.role === 'lab' && (
+          <Link href="/lab/search" className="transition-colors hover:text-white">Search</Link>
+        )}
       </nav>
       <div className="ml-auto flex items-center gap-5 text-sm text-[var(--foreground-secondary)]">
         <span>{user.email}</span>

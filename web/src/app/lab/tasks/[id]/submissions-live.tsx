@@ -97,9 +97,32 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
           }
 
           setSubmissions(prev => [newSubmission, ...prev])
-          setIndexStatuses(prev => ({ ...prev, [newSubmission.id]: 'none' }))
+          setIndexStatuses(prev => ({ ...prev, [newSubmission.id]: 'indexing' }))
           setNewCount(n => n + 1)
           triggerToast('New submission received!')
+
+          // Auto-index the new submission for search
+          fetch('/api/index-video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ submissionId: newSubmission.id }),
+          }).then(async (res) => {
+            const result = await res.json()
+            if (res.ok && result.videoId) {
+              setIndexStatuses(prev => ({ ...prev, [newSubmission.id]: 'indexed' }))
+              setSubmissions(prev =>
+                prev.map(s =>
+                  s.id === newSubmission.id
+                    ? { ...s, metadata: { ...(s.metadata ?? {}), twelvelabs_video_id: result.videoId } }
+                    : s
+                )
+              )
+            } else {
+              setIndexStatuses(prev => ({ ...prev, [newSubmission.id]: 'error' }))
+            }
+          }).catch(() => {
+            setIndexStatuses(prev => ({ ...prev, [newSubmission.id]: 'error' }))
+          })
         }
       )
       .subscribe()
