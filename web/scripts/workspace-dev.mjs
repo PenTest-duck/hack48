@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import net from 'node:net'
+import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 
@@ -20,6 +21,48 @@ function fileExists(filePath) {
     return true
   } catch {
     return false
+  }
+}
+
+function parseEnvFile(filePath) {
+  const result = {}
+  const lines = fs.readFileSync(filePath, 'utf8').split('\n')
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eqIndex = trimmed.indexOf('=')
+    if (eqIndex === -1) continue
+    const key = trimmed.slice(0, eqIndex).trim()
+    const val = trimmed.slice(eqIndex + 1).trim().replace(/^["']|["']$/g, '')
+    result[key] = val
+  }
+  return result
+}
+
+function patchSecretsFromHome() {
+  const secretsPath = path.join(os.homedir(), '.hack48.env')
+  if (!fileExists(secretsPath)) return
+  if (!fileExists(sharedEnvPath)) return
+
+  const secrets = parseEnvFile(secretsPath)
+  let sharedContent = fs.readFileSync(sharedEnvPath, 'utf8')
+  let changed = false
+
+  for (const [key, val] of Object.entries(secrets)) {
+    if (!val) continue
+    const emptyPattern = new RegExp(`^(${key}=["']?["']?)$`, 'm')
+    if (emptyPattern.test(sharedContent)) {
+      sharedContent = sharedContent.replace(emptyPattern, `${key}="${val}"`)
+      changed = true
+    }
+  }
+
+  if (changed) {
+    const target = fs.lstatSync(sharedEnvPath).isSymbolicLink()
+      ? fs.realpathSync(sharedEnvPath)
+      : sharedEnvPath
+    fs.writeFileSync(target, sharedContent)
+    console.log(`[workspace-dev] Patched secrets from ${secretsPath}`)
   }
 }
 
@@ -191,5 +234,6 @@ function startNextDev(port) {
 }
 
 ensureSharedEnv()
+patchSecretsFromHome()
 const port = await assignPort()
 startNextDev(port)
