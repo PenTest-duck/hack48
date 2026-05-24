@@ -67,7 +67,6 @@ export default function CreateTaskForm({
     assets.length > 0,
     requirements.length > 0,
     bountyValue > 0,
-    quantity > 0,
     deadline.length > 0,
   ].filter(Boolean).length
 
@@ -361,7 +360,7 @@ export default function CreateTaskForm({
                   ))}
                 </ul>
                 <p className="mt-3 text-xs text-[var(--foreground-secondary)]">
-                  {filledChecks} of 7 pieces are in place.
+                  {filledChecks} of 6 pieces are in place.
                 </p>
               </div>
 

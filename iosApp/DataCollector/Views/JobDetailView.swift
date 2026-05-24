@@ -9,6 +9,7 @@ struct JobDetailView: View {
     @Environment(\.modelContext) private var context
     @Query private var recordings: [Recording]
     @State private var progress: [UUID: Double] = [:]
+    @State private var submissionStatus: [String: String] = [:]   // recordingId -> review status
     @State private var errorMessage: String?
     @State private var pendingDelete: Recording?
     @State private var playing: PlayableVideo?
@@ -36,6 +37,9 @@ struct JobDetailView: View {
         }
         .navigationTitle(job.title)
         .navigationBarTitleDisplayMode(.inline)
+        .scrollContentBackground(.hidden)
+        .background(Color.appBackground.ignoresSafeArea())
+        .task { await loadStatuses() }
         .safeAreaInset(edge: .bottom) { recordBar }
         .sheet(item: $playing) { VideoPlayerSheet(url: $0.url) }
         .alert("Upload failed", isPresented: .constant(errorMessage != nil)) {
@@ -97,11 +101,7 @@ struct JobDetailView: View {
                     .font(.subheadline.weight(.medium))
                 Text("\(RecordingFormat.duration(rec.durationMs)) · \(RecordingFormat.size(rec.sizeBytes))")
                     .font(.caption).foregroundStyle(.secondary)
-                Text(rec.status.label)
-                    .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, 8).padding(.vertical, 2)
-                    .background(rec.status.color.opacity(0.18), in: Capsule())
-                    .foregroundStyle(rec.status.color)
+                statusBadge(rec)
             }
             Spacer()
             VStack(spacing: 10) {
@@ -177,6 +177,7 @@ struct JobDetailView: View {
                 }
             }
             await MainActor.run { progress[id] = nil }
+            await loadStatuses()   // reflect the new "pending review" submission
         }
     }
 
@@ -184,5 +185,32 @@ struct JobDetailView: View {
         RecordingStore.deleteBundle(folderName: rec.folderName)
         context.delete(rec)
         try? context.save()
+    }
+
+    // MARK: - Review status
+
+    @ViewBuilder
+    private func statusBadge(_ rec: Recording) -> some View {
+        let s = displayStatus(rec)
+        Text(s.text)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 8).padding(.vertical, 2)
+            .background(s.color.opacity(0.18), in: Capsule())
+            .foregroundStyle(s.color)
+    }
+
+    /// Prefer the server review status; fall back to the local upload status.
+    private func displayStatus(_ rec: Recording) -> (text: String, color: Color) {
+        switch submissionStatus[rec.id.uuidString.lowercased()] {
+        case "approved": return ("Approved", .appCollector)
+        case "rejected": return ("Rejected", .appDanger)
+        case "pending":  return ("Pending review", .appAmber)
+        default:         return (rec.status.label, rec.status.color)
+        }
+    }
+
+    private func loadStatuses() async {
+        let map = (try? await SubmissionsService.statuses(taskId: job.id.uuidString)) ?? [:]
+        await MainActor.run { submissionStatus = map }
     }
 }

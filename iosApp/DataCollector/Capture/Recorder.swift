@@ -256,7 +256,7 @@ final class Recorder: NSObject, ObservableObject {
         ]
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = true
-        input.transform = CGAffineTransform(rotationAngle: .pi / 2) // ARKit frames are landscape → display portrait
+        input.transform = .identity // record in landscape (record screen is locked to landscape)
 
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
         if writer.canAdd(input) { writer.add(input) }
