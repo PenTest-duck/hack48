@@ -57,7 +57,9 @@ def mapping_config() -> MappingConfig:
 def sample(timestamp_ms: int = 1000) -> TeleopSample:
     arm = ArmSample(
         shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        shoulder_image_xy=(0.2, 0.2),
         elbow=PoseLandmark(0.0, 0.3, 0.0, 0.9),
+        elbow_image_xy=(0.4, 0.4),
         wrist=PoseLandmark(0.0, 0.6, 0.0, 0.9),
         wrist_image_xy=(0.5, 0.5),
         timestamp_ms=timestamp_ms,
@@ -86,7 +88,9 @@ def test_sample_is_usable_false_when_pose_visibility_below_threshold() -> None:
     sample_with_low_visibility = sample()
     bad_arm = ArmSample(
         shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.2),
+        shoulder_image_xy=sample_with_low_visibility.arm.shoulder_image_xy,
         elbow=sample_with_low_visibility.arm.elbow,
+        elbow_image_xy=sample_with_low_visibility.arm.elbow_image_xy,
         wrist=sample_with_low_visibility.arm.wrist,
         wrist_image_xy=sample_with_low_visibility.arm.wrist_image_xy,
         timestamp_ms=sample_with_low_visibility.arm.timestamp_ms,
@@ -127,7 +131,9 @@ def test_sample_is_usable_false_when_underlying_samples_are_stale() -> None:
     # callback time, not the loop clock — otherwise stale-result detection is dead.
     arm = ArmSample(
         shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        shoulder_image_xy=(0.2, 0.2),
         elbow=PoseLandmark(0.0, 0.3, 0.0, 0.9),
+        elbow_image_xy=(0.4, 0.4),
         wrist=PoseLandmark(0.0, 0.6, 0.0, 0.9),
         wrist_image_xy=(0.5, 0.5),
         timestamp_ms=500,
@@ -202,6 +208,32 @@ def test_handle_sync_toggle_flips_when_send_ok() -> None:
     assert state.sync_enabled is True
     main.handle_sync_toggle(state)
     assert state.sync_enabled is False
+
+
+def test_arm_image_landmarks_returns_all_three_pose_landmarks() -> None:
+    arm = ArmSample(
+        shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        elbow=PoseLandmark(0.0, 0.3, 0.0, 0.9),
+        wrist=PoseLandmark(0.0, 0.6, 0.0, 0.9),
+        shoulder_image_xy=(0.2, 0.2),
+        elbow_image_xy=(0.4, 0.4),
+        wrist_image_xy=(0.5, 0.5),
+        timestamp_ms=1000,
+    )
+    sample = TeleopSample(arm=arm, hand=None, timestamp_ms=1000)
+
+    landmarks = main._arm_image_landmarks("right", sample)
+
+    assert landmarks is not None
+    assert set(landmarks.keys()) == {"shoulder", "elbow", "wrist"}
+    assert landmarks["shoulder"] == (0.2, 0.2)
+    assert landmarks["elbow"] == (0.4, 0.4)
+    assert landmarks["wrist"] == (0.5, 0.5)
+
+
+def test_arm_image_landmarks_returns_none_when_arm_missing() -> None:
+    sample = TeleopSample(arm=None, hand=None, timestamp_ms=1000)
+    assert main._arm_image_landmarks("right", sample) is None
 
 
 def test_handle_backend_send_locks_off_on_failure() -> None:

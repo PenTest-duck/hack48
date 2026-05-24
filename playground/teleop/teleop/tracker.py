@@ -161,6 +161,8 @@ class LatestPoseResult:
         shoulder_world = world_lms[indices[0]]
         elbow_world = world_lms[indices[1]]
         wrist_world = world_lms[indices[2]]
+        shoulder_image = image_lms[indices[0]]
+        elbow_image = image_lms[indices[1]]
         wrist_image = image_lms[indices[2]]
 
         return ArmSample(
@@ -170,9 +172,11 @@ class LatestPoseResult:
                 shoulder_world.z,
                 visibility=shoulder_world.visibility,
             ),
+            shoulder_image_xy=(shoulder_image.x, shoulder_image.y),
             elbow=PoseLandmark(
                 elbow_world.x, elbow_world.y, elbow_world.z, visibility=elbow_world.visibility
             ),
+            elbow_image_xy=(elbow_image.x, elbow_image.y),
             wrist=PoseLandmark(
                 wrist_world.x, wrist_world.y, wrist_world.z, visibility=wrist_world.visibility
             ),

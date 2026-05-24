@@ -149,12 +149,16 @@ def arm(
     elbow=(0.0, 0.3, 0.0),
     wrist=(0.0, 0.6, 0.0),
     visibility=0.9,
+    shoulder_image_xy=(0.2, 0.2),
+    elbow_image_xy=(0.4, 0.4),
     wrist_image_xy=(0.5, 0.5),
     timestamp_ms=1000,
 ) -> ArmSample:
     return ArmSample(
         shoulder=PoseLandmark(*shoulder, visibility=visibility),
+        shoulder_image_xy=shoulder_image_xy,
         elbow=PoseLandmark(*elbow, visibility=visibility),
+        elbow_image_xy=elbow_image_xy,
         wrist=PoseLandmark(*wrist, visibility=visibility),
         wrist_image_xy=wrist_image_xy,
         timestamp_ms=timestamp_ms,

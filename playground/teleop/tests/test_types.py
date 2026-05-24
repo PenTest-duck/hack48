@@ -101,11 +101,19 @@ def test_arm_sample_holds_shoulder_elbow_wrist_pose_landmarks_and_timestamp() ->
     elbow = PoseLandmark(0.0, 0.3, 0.0, visibility=0.9)
     wrist = PoseLandmark(0.0, 0.6, 0.0, visibility=0.9)
     sample = ArmSample(
-        shoulder=shoulder, elbow=elbow, wrist=wrist, wrist_image_xy=(0.5, 0.5), timestamp_ms=20
+        shoulder=shoulder,
+        shoulder_image_xy=(0.2, 0.2),
+        elbow=elbow,
+        elbow_image_xy=(0.4, 0.4),
+        wrist=wrist,
+        wrist_image_xy=(0.5, 0.5),
+        timestamp_ms=20,
     )
     assert sample.shoulder is shoulder
     assert sample.elbow is elbow
     assert sample.wrist is wrist
+    assert sample.shoulder_image_xy == (0.2, 0.2)
+    assert sample.elbow_image_xy == (0.4, 0.4)
     assert sample.wrist_image_xy == (0.5, 0.5)
     assert sample.timestamp_ms == 20
 
@@ -113,7 +121,9 @@ def test_arm_sample_holds_shoulder_elbow_wrist_pose_landmarks_and_timestamp() ->
 def test_teleop_sample_holds_arm_and_hand() -> None:
     arm = ArmSample(
         shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        shoulder_image_xy=(0.2, 0.2),
         elbow=PoseLandmark(0.0, 0.3, 0.0, 0.9),
+        elbow_image_xy=(0.4, 0.4),
         wrist=PoseLandmark(0.0, 0.6, 0.0, 0.9),
         wrist_image_xy=(0.5, 0.5),
         timestamp_ms=20,
@@ -133,7 +143,9 @@ def test_teleop_sample_holds_arm_and_hand() -> None:
 def test_teleop_sample_allows_missing_hand_or_arm() -> None:
     arm = ArmSample(
         shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        shoulder_image_xy=(0.2, 0.2),
         elbow=PoseLandmark(0.0, 0.3, 0.0, 0.9),
+        elbow_image_xy=(0.4, 0.4),
         wrist=PoseLandmark(0.0, 0.6, 0.0, 0.9),
         wrist_image_xy=(0.5, 0.5),
         timestamp_ms=20,

@@ -504,7 +504,11 @@ def _arm_image_landmarks(
 ) -> dict[str, tuple[float, float]] | None:
     if sample.arm is None:
         return None
-    return {"wrist": sample.arm.wrist_image_xy}
+    return {
+        "shoulder": sample.arm.shoulder_image_xy,
+        "elbow": sample.arm.elbow_image_xy,
+        "wrist": sample.arm.wrist_image_xy,
+    }
 
 
 def sample_is_usable(

@@ -168,6 +168,17 @@ def test_latest_pose_result_returns_arm_sample_for_chosen_arm() -> None:
     assert sample.wrist_image_xy == pytest.approx((0.7, 0.7))
 
 
+def test_best_arm_sample_populates_all_image_xy_fields() -> None:
+    latest = LatestPoseResult()
+    latest.update(make_pose_result(), None, timestamp_ms=10)
+
+    sample = latest.best_arm_sample(arm="right")
+    assert sample is not None
+    assert sample.shoulder_image_xy == pytest.approx((0.5, 0.3))
+    assert sample.elbow_image_xy == pytest.approx((0.6, 0.5))
+    assert sample.wrist_image_xy == pytest.approx((0.7, 0.7))
+
+
 def test_latest_pose_result_supports_left_arm() -> None:
     latest = LatestPoseResult()
     image_data = {
@@ -248,7 +259,9 @@ def test_latest_result_buffers_are_thread_safe() -> None:
 def test_fuse_samples_pairs_arm_with_nearest_hand_in_image_plane() -> None:
     arm = ArmSample(
         shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        shoulder_image_xy=(0.2, 0.2),
         elbow=PoseLandmark(0.1, 0.2, 0.0, 0.9),
+        elbow_image_xy=(0.4, 0.4),
         wrist=PoseLandmark(0.2, 0.4, 0.0, 0.9),
         wrist_image_xy=(0.75, 0.75),
         timestamp_ms=10,
@@ -274,7 +287,9 @@ def test_fuse_samples_pairs_arm_with_nearest_hand_in_image_plane() -> None:
 def test_fuse_samples_returns_none_hand_when_no_hands_present() -> None:
     arm = ArmSample(
         shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        shoulder_image_xy=(0.2, 0.2),
         elbow=PoseLandmark(0.1, 0.2, 0.0, 0.9),
+        elbow_image_xy=(0.4, 0.4),
         wrist=PoseLandmark(0.2, 0.4, 0.0, 0.9),
         wrist_image_xy=(0.5, 0.5),
         timestamp_ms=10,
@@ -299,7 +314,9 @@ def test_fuse_samples_returns_none_arm_when_arm_missing() -> None:
 def test_fuse_samples_uses_oldest_underlying_sample_timestamp() -> None:
     arm = ArmSample(
         shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        shoulder_image_xy=(0.2, 0.2),
         elbow=PoseLandmark(0.1, 0.2, 0.0, 0.9),
+        elbow_image_xy=(0.4, 0.4),
         wrist=PoseLandmark(0.2, 0.4, 0.0, 0.9),
         wrist_image_xy=(0.5, 0.5),
         timestamp_ms=500,
@@ -320,7 +337,9 @@ def test_fuse_samples_uses_oldest_underlying_sample_timestamp() -> None:
 def test_fuse_samples_uses_arm_timestamp_when_hand_missing() -> None:
     arm = ArmSample(
         shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        shoulder_image_xy=(0.2, 0.2),
         elbow=PoseLandmark(0.1, 0.2, 0.0, 0.9),
+        elbow_image_xy=(0.4, 0.4),
         wrist=PoseLandmark(0.2, 0.4, 0.0, 0.9),
         wrist_image_xy=(0.5, 0.5),
         timestamp_ms=300,
@@ -362,7 +381,9 @@ def test_draw_overlay_draws_pose_skeleton_lines_when_arm_present() -> None:
     frame = np.zeros((240, 320, 3), dtype=np.uint8)
     arm = ArmSample(
         shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        shoulder_image_xy=(0.2, 0.2),
         elbow=PoseLandmark(0.1, 0.2, 0.0, 0.9),
+        elbow_image_xy=(0.4, 0.4),
         wrist=PoseLandmark(0.2, 0.4, 0.0, 0.9),
         wrist_image_xy=(0.5, 0.5),
         timestamp_ms=10,

@@ -43,7 +43,9 @@ class HandSample:
 @dataclass(frozen=True)
 class ArmSample:
     shoulder: PoseLandmark
+    shoulder_image_xy: tuple[float, float]
     elbow: PoseLandmark
+    elbow_image_xy: tuple[float, float]
     wrist: PoseLandmark
     wrist_image_xy: tuple[float, float]
     timestamp_ms: int
