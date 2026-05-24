@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Minimal email + password sign in / sign up screen.
+/// Email + password sign in / sign up, with a role picker (Lab / Collector) on sign-up.
 struct AuthView: View {
     @EnvironmentObject private var auth: AuthManager
     @State private var email = ""
     @State private var password = ""
     @State private var name = ""
+    @State private var role: UserRole = .collector
     @State private var isSignUp = false
     @State private var error: String?
     @State private var busy = false
@@ -21,7 +22,13 @@ struct AuthView: View {
 
             VStack(spacing: 12) {
                 if isSignUp {
-                    TextField("Full name", text: $name)
+                    Picker("I am a", selection: $role) {
+                        Text("Collector").tag(UserRole.collector)
+                        Text("Lab").tag(UserRole.lab)
+                    }
+                    .pickerStyle(.segmented)
+
+                    TextField(role == .lab ? "Lab name" : "Your name", text: $name)
                         .textContentType(.name)
                 }
                 TextField("Email", text: $email)
@@ -68,7 +75,7 @@ struct AuthView: View {
         Task {
             do {
                 if isSignUp {
-                    try await auth.signUp(email: email, password: password, fullName: name)
+                    try await auth.signUp(email: email, password: password, displayName: name, role: role)
                 } else {
                     try await auth.signIn(email: email, password: password)
                 }

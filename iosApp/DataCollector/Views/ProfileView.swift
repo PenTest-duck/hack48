@@ -24,22 +24,25 @@ struct ProfileView: View {
             List {
                 Section("Account") {
                     LabeledContent("Email", value: email)
-                    LabeledContent("Role", value: "Collector")
+                    LabeledContent("Role", value: auth.role?.label ?? "Collector")
                 }
 
-                Section("Progress") {
-                    LabeledContent("Recordings captured", value: "\(recordings.count)")
-                    LabeledContent("Uploaded", value: "\(uploadedCount)")
-                }
-
-                Section("Earnings") {
-                    HStack {
-                        Text("Total earned")
-                        Spacer()
-                        Text(money(totalEarned)).fontWeight(.semibold).foregroundStyle(Color.appCollector)
+                // Collector-only sections.
+                if auth.role != .lab {
+                    Section("Progress") {
+                        LabeledContent("Recordings captured", value: "\(recordings.count)")
+                        LabeledContent("Uploaded", value: "\(uploadedCount)")
                     }
-                    LabeledContent("Pending", value: money(pendingEarned))
-                    LabeledContent("Paid out", value: money(paidOut))
+
+                    Section("Earnings") {
+                        HStack {
+                            Text("Total earned")
+                            Spacer()
+                            Text(money(totalEarned)).fontWeight(.semibold).foregroundStyle(Color.appCollector)
+                        }
+                        LabeledContent("Pending", value: money(pendingEarned))
+                        LabeledContent("Paid out", value: money(paidOut))
+                    }
                 }
 
                 Section("Change password") {
@@ -55,6 +58,14 @@ struct ProfileView: View {
                         Text(message)
                             .font(.footnote)
                             .foregroundStyle(isError ? Color.appDanger : Color.appCollector)
+                    }
+                }
+
+                Section("Experimental") {
+                    NavigationLink {
+                        LiveCoachView()
+                    } label: {
+                        Label("Live Coach (beta)", systemImage: "sparkles")
                     }
                 }
 

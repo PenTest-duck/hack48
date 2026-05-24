@@ -1,13 +1,15 @@
 import Foundation
 import Supabase
 
-/// Minimal auth state wrapper over Supabase Auth (email + password).
+/// Auth state over Supabase Auth (email + password) with the account role.
 @MainActor
 final class AuthManager: ObservableObject {
     @Published private(set) var isAuthenticated: Bool
+    @Published private(set) var role: UserRole?
 
     init() {
         isAuthenticated = Backend.supabase.auth.currentSession != nil
+        role = Self.currentRole()
     }
 
     func signIn(email: String, password: String) async throws {
@@ -15,19 +17,17 @@ final class AuthManager: ObservableObject {
         refresh()
     }
 
-    func signUp(email: String, password: String, fullName: String) async throws {
-        // Pass the name as user metadata so the `handle_new_user` trigger can
-        // populate the required column in `profiles`. We send both common keys
-        // (`full_name` and `name`) so whichever the trigger reads is present.
+    /// `role` = lab or collector; `displayName` = the lab's name or the person's name.
+    /// Sent as user metadata so the `handle_new_user` trigger fills `profiles`.
+    func signUp(email: String, password: String, displayName: String, role: UserRole) async throws {
         _ = try await Backend.supabase.auth.signUp(
             email: email,
             password: password,
             data: [
-                "full_name": .string(fullName),
-                "name": .string(fullName),
-                // This app is for data collectors; the `profiles` trigger requires a role.
-                // (Web test accounts collector@test.com / lab@test.com imply these values.)
-                "role": .string("collector"),
+                "role": .string(role.rawValue),
+                "display_name": .string(displayName),
+                "full_name": .string(displayName),
+                "name": .string(displayName),
             ]
         )
         refresh()
@@ -40,5 +40,13 @@ final class AuthManager: ObservableObject {
 
     private func refresh() {
         isAuthenticated = Backend.supabase.auth.currentSession != nil
+        role = Self.currentRole()
+    }
+
+    /// Reads the role from the signed-in user's metadata (set at sign-up, like the web).
+    private static func currentRole() -> UserRole? {
+        guard let meta = Backend.supabase.auth.currentUser?.userMetadata,
+              case let .string(value)? = meta["role"] else { return nil }
+        return UserRole(rawValue: value)
     }
 }

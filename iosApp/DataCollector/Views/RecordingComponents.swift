@@ -53,6 +53,38 @@ struct VideoPlayerSheet: View {
     }
 }
 
+/// A no-chrome, auto-looping video view (raw `AVPlayerLayer`). Has no transport
+/// controls, so overlaid buttons (e.g. Save/Discard) receive taps cleanly — and
+/// it avoids AVKit's Live Text analysis that spams `VKCImageAnalyzer` errors.
+struct LoopingPlayerView: UIViewRepresentable {
+    let url: URL
+
+    func makeUIView(context: Context) -> LoopingPlayerUIView { LoopingPlayerUIView(url: url) }
+    func updateUIView(_ uiView: LoopingPlayerUIView, context: Context) {}
+    static func dismantleUIView(_ uiView: LoopingPlayerUIView, coordinator: ()) { uiView.cleanup() }
+}
+
+final class LoopingPlayerUIView: UIView {
+    private let player = AVQueuePlayer()
+    private var looper: AVPlayerLooper?
+
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+    private var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+
+    init(url: URL) {
+        super.init(frame: .zero)
+        looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
+        playerLayer.player = player
+        playerLayer.videoGravity = .resizeAspect
+        player.isMuted = true
+        player.play()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func cleanup() { player.pause(); looper = nil; playerLayer.player = nil }
+}
+
 extension Recording {
     /// On-disk URL of the recorded video file, if present.
     var videoURL: URL? {

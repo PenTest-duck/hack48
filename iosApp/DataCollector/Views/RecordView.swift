@@ -11,9 +11,15 @@ struct RecordView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var recorder = Recorder()
     var job: Job? = nil
+    var referenceTaskId: String? = nil   // when set, this records a task's reference example
+    var profile: CoachingProfile? = nil  // task-specific coaching targets (from the lab's reference)
+    var profileDebug: String? = nil      // diagnostic of how the profile loaded
 
     @State private var isDeviceLandscape = UIDevice.current.orientation.isLandscape
     @State private var review: ReviewClip?
+    @State private var refUploading = false
+    @State private var refError: String?
+    @State private var showDebug = true   // on-screen coaching debug readout
 
     var body: some View {
         Group {
@@ -37,6 +43,8 @@ struct RecordView: View {
                         timerBadge
                     } else if let job {
                         jobPrompt(job)
+                    } else if referenceTaskId != nil {
+                        referencePrompt
                     }
                 }
                 // Nudge the user to hold the phone horizontally.
@@ -45,9 +53,17 @@ struct RecordView: View {
                         rotateHint
                     }
                 }
+                // Live, on-device coaching chips.
+                .overlay(alignment: .topLeading) {
+                    if recorder.live.hasData {
+                        coachingHUD.padding(12)
+                    }
+                }
+                // Debug readout: which ranges are active (reference vs defaults).
+                .overlay(alignment: .topTrailing) { debugOverlay }
             }
         }
-        .navigationTitle(job?.title ?? "Record")
+        .navigationTitle(referenceTaskId != nil ? "Reference" : (job?.title ?? "Record"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
@@ -56,9 +72,11 @@ struct RecordView: View {
             isDeviceLandscape = UIDevice.current.orientation.isLandscape
             recorder.bountyId = job?.id.uuidString
             recorder.onFinished = { recording in
-                context.insert(recording)
-                try? context.save()
-                review = ReviewClip(recording: recording)   // review the clip just captured
+                if referenceTaskId == nil {   // collector clips persist locally; references upload on Save
+                    context.insert(recording)
+                    try? context.save()
+                }
+                review = ReviewClip(recording: recording)
             }
             recorder.configureIfNeeded()
         }
@@ -83,11 +101,17 @@ struct RecordView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if let url = rec.videoURL {
-                VideoPlayer(player: AVPlayer(url: url))
+                LoopingPlayerView(url: url)
                     .ignoresSafeArea()
             }
             VStack {
                 Spacer()
+                if let refError {
+                    Text(refError).font(.footnote).foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                        .padding(10).background(.black.opacity(0.6), in: Capsule())
+                        .padding(.bottom, 8)
+                }
                 HStack(spacing: 56) {
                     // Discard — red circle with an ✗; stays on the camera.
                     VStack(spacing: 6) {
@@ -109,27 +133,214 @@ struct RecordView: View {
                         Text("Discard").font(.caption).foregroundStyle(.white.opacity(0.85))
                     }
 
-                    // Save — green circle with a ✓; goes back to the job screen.
+                    // Save — green circle with a ✓ (shows progress while a reference uploads).
                     VStack(spacing: 6) {
                         Button {
-                            review = nil
-                            dismiss()
+                            if let taskId = referenceTaskId {
+                                saveReference(rec, taskId: taskId)
+                            } else {
+                                review = nil
+                                dismiss()
+                            }
                         } label: {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 30, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 76, height: 76)
-                                .background(Color.green, in: Circle())
-                                .overlay(Circle().stroke(.white.opacity(0.3), lineWidth: 1))
-                                .shadow(color: .green.opacity(0.6), radius: 10)
+                            ZStack {
+                                Circle()
+                                    .fill(Color.green)
+                                    .frame(width: 76, height: 76)
+                                    .overlay(Circle().stroke(.white.opacity(0.3), lineWidth: 1))
+                                    .shadow(color: .green.opacity(0.6), radius: 10)
+                                if refUploading {
+                                    ProgressView().tint(.white)
+                                } else {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 30, weight: .bold))
+                                        .foregroundStyle(.white)
+                                }
+                            }
                         }
                         .buttonStyle(.plain)
-                        Text("Save").font(.caption.weight(.semibold)).foregroundStyle(.white)
+                        .disabled(refUploading)
+                        Text(refUploading ? "Saving…" : "Save")
+                            .font(.caption.weight(.semibold)).foregroundStyle(.white)
                     }
                 }
                 .padding(.bottom, 28)
             }
         }
+    }
+
+    private var referencePrompt: some View {
+        Text("Record a reference example for this task")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .background(.black.opacity(0.45), in: Capsule())
+            .padding(.top, 8)
+    }
+
+    /// Reference mode Save: derive coaching ranges from this clip, upload the
+    /// bundle (incl. coaching.json) to references/<taskId>/, and set tasks.reference_path.
+    private func saveReference(_ rec: Recording, taskId: String) {
+        refUploading = true
+        refError = nil
+        let folderName = rec.folderName
+        var streams = rec.streams
+        Task {
+            do {
+                // Compute per-task coaching targets and bundle them as coaching.json
+                // so collectors get task-specific live guidance.
+                let folder = RecordingStore.folderURL(for: folderName)
+                let coachingProfile = await CoachingProfileBuilder.build(folderURL: folder)
+                if let data = try? JSONEncoder().encode(coachingProfile) {
+                    let coachingURL = folder.appendingPathComponent("coaching.json")
+                    try? data.write(to: coachingURL)
+                    if FileManager.default.fileExists(atPath: coachingURL.path),
+                       !streams.contains("coaching.json") {
+                        streams.append("coaching.json")
+                    }
+                }
+                let path = try await UploadService.uploadReference(
+                    folderName: folderName, streams: streams, taskId: taskId
+                )
+                try await LabTasksService.setReferencePath(taskId: taskId, path: path)
+                await MainActor.run {
+                    RecordingStore.deleteBundle(folderName: folderName)   // uploaded; no local copy needed
+                    refUploading = false
+                    review = nil
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    refError = error.localizedDescription
+                    refUploading = false
+                }
+            }
+        }
+    }
+
+    // MARK: - Live coaching HUD
+
+    /// Live chips, checked against the task's reference ranges when available,
+    /// otherwise generic defaults.
+    private var coachingChips: [CoachingChip] {
+        let m = recorder.live
+        var chips: [CoachingChip] = []
+
+        let lumMin = profile?.luminanceMin ?? 0.22
+        let lumMax = profile?.luminanceMax ?? 0.85
+        if m.luminance < lumMin { chips.append(CoachingChip(label: "Too dark", ok: false)) }
+        else if m.luminance > lumMax { chips.append(CoachingChip(label: "Too bright", ok: false)) }
+        else { chips.append(CoachingChip(label: "Lighting", ok: true)) }
+
+        let motionMax = profile?.motionMax ?? 45
+        let steady = m.motionDegPerSec <= motionMax
+        chips.append(CoachingChip(label: steady ? "Steady" : "Hold steadier", ok: steady))
+
+        if let d = m.distanceM {
+            let dMin = profile?.distanceMin ?? 0.3
+            let dMax = profile?.distanceMax ?? 3.0
+            if d < dMin { chips.append(CoachingChip(label: "Too close", ok: false)) }
+            else if d > dMax { chips.append(CoachingChip(label: "Too far", ok: false)) }
+            else { chips.append(CoachingChip(label: "Distance", ok: true)) }
+        }
+        return chips
+    }
+
+    private var coachingHUD: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(coachingChips) { chip in
+                HStack(spacing: 6) {
+                    Image(systemName: chip.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    Text(chip.label)
+                }
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(.black.opacity(0.5), in: Capsule())
+                .foregroundStyle(chip.ok ? Color.green : Color.appAmber)
+            }
+        }
+    }
+
+    // MARK: - Debug readout (active ranges: reference vs defaults)
+
+    private var debugOverlay: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            Button { showDebug.toggle() } label: {
+                Image(systemName: "ladybug.fill")
+                    .font(.footnote)
+                    .padding(7)
+                    .background(.black.opacity(0.55), in: Circle())
+                    .foregroundStyle(showDebug ? .cyan : .white)
+            }
+            if showDebug { debugPanel }
+        }
+        .padding(12)
+    }
+
+    private var debugPanel: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("COACH · \(profile == nil ? "defaults (no profile)" : "reference")")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(profile == nil ? .orange : .cyan)
+            ForEach(debugRows) { row in
+                HStack(spacing: 6) {
+                    Text(row.name).frame(width: 42, alignment: .leading)
+                    Text(row.live).frame(width: 56, alignment: .leading)
+                    Text(row.range).frame(width: 84, alignment: .leading)
+                    Text(row.source).foregroundStyle(.white.opacity(0.55))
+                    Image(systemName: row.ok ? "checkmark" : "xmark")
+                        .foregroundStyle(row.ok ? .green : .orange)
+                }
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.white)
+            }
+            if let profileDebug {
+                Text(profileDebug)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.yellow.opacity(0.85))
+                    .frame(maxWidth: 220, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(8)
+        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// One line per metric: live value, active range, source (ref/def), pass/fail.
+    private var debugRows: [CoachDebugRow] {
+        let m = recorder.live
+        var rows: [CoachDebugRow] = []
+
+        let lumMin = profile?.luminanceMin ?? 0.22
+        let lumMax = profile?.luminanceMax ?? 0.85
+        rows.append(CoachDebugRow(
+            name: "Light",
+            live: String(format: "%.2f", m.luminance),
+            range: String(format: "%.2f-%.2f", lumMin, lumMax),
+            source: profile?.luminanceMin != nil ? "ref" : "def",
+            ok: m.luminance >= lumMin && m.luminance <= lumMax))
+
+        let motionMax = profile?.motionMax ?? 45
+        rows.append(CoachDebugRow(
+            name: "Steady",
+            live: String(format: "%.0f/s", m.motionDegPerSec),
+            range: String(format: "<=%.0f", motionMax),
+            source: profile?.motionMax != nil ? "ref" : "def",
+            ok: m.motionDegPerSec <= motionMax))
+
+        if let d = m.distanceM {
+            let dMin = profile?.distanceMin ?? 0.3
+            let dMax = profile?.distanceMax ?? 3.0
+            rows.append(CoachDebugRow(
+                name: "Dist",
+                live: String(format: "%.2fm", d),
+                range: String(format: "%.2f-%.2f", dMin, dMax),
+                source: profile?.distanceMin != nil ? "ref" : "def",
+                ok: d >= dMin && d <= dMax))
+        } else {
+            rows.append(CoachDebugRow(name: "Dist", live: "n/a", range: "no LiDAR", source: "-", ok: true))
+        }
+        return rows
     }
 
     private var rotateHint: some View {
@@ -213,4 +424,21 @@ struct RecordView: View {
 private struct ReviewClip: Identifiable {
     let id = UUID()
     let recording: Recording
+}
+
+/// One live coaching chip (e.g. "Lighting ✓").
+private struct CoachingChip: Identifiable {
+    let id = UUID()
+    let label: String
+    let ok: Bool
+}
+
+/// One row in the on-screen coaching debug readout.
+private struct CoachDebugRow: Identifiable {
+    let id = UUID()
+    let name: String     // metric
+    let live: String     // current value
+    let range: String    // active acceptable range
+    let source: String   // "ref" | "def" | "-"
+    let ok: Bool
 }

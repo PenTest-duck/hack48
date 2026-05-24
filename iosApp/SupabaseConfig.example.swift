@@ -12,4 +12,9 @@ enum SupabaseConfig {
     static let anonKey = "<your-anon-key>"
     static let publishableKey = "<your-publishable-key>"
     static let recordingsBucket = "recordings"
+
+    // Gemini Live (real-time coaching). Leave "" to disable. ⚠️ raw key in-app is
+    // demo-only — use ephemeral tokens from a backend for production.
+    static let geminiAPIKey = ""
+    static let geminiLiveModel = "models/gemini-3.1-flash-live-preview"
 }

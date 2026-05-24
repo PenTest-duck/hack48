@@ -9,10 +9,14 @@ struct JobDetailView: View {
     @Environment(\.modelContext) private var context
     @Query private var recordings: [Recording]
     @State private var progress: [UUID: Double] = [:]
-    @State private var submissionStatus: [String: String] = [:]   // recordingId -> review status
+    @State private var scores: [String: RecordingScore] = [:]   // recordingId -> status + score
     @State private var errorMessage: String?
     @State private var pendingDelete: Recording?
     @State private var playing: PlayableVideo?
+    @State private var detail: DetailItem?
+    @State private var pollTrigger = 0
+    @State private var coachingProfile: CoachingProfile?   // task-specific live targets
+    @State private var coachingDebug: String?              // why it loaded / didn't
 
     init(job: Job) {
         self.job = job
@@ -26,6 +30,9 @@ struct JobDetailView: View {
     var body: some View {
         List {
             Section { jobInfo }
+            Section("Reference example") {
+                ReferenceVideoView(taskId: job.id.uuidString)
+            }
             Section("Your recordings (\(recordings.count))") {
                 if recordings.isEmpty {
                     Text("No recordings yet. Tap Record below to capture one.")
@@ -39,9 +46,18 @@ struct JobDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .scrollContentBackground(.hidden)
         .background(Color.appBackground.ignoresSafeArea())
-        .task { await loadStatuses() }
+        .task(id: pollTrigger) { await pollScores() }
+        .task {
+            let loaded = await CoachingService.load(taskId: job.id.uuidString)
+            coachingProfile = loaded.profile
+            coachingDebug = loaded.debug
+        }
+        .refreshable { await loadScores() }
         .safeAreaInset(edge: .bottom) { recordBar }
         .sheet(item: $playing) { VideoPlayerSheet(url: $0.url) }
+        .sheet(item: $detail) { item in
+            RecordingDetailView(recording: item.recording, taskId: job.id.uuidString)
+        }
         .alert("Upload failed", isPresented: .constant(errorMessage != nil)) {
             Button("OK") { errorMessage = nil }
         } message: {
@@ -96,13 +112,20 @@ struct JobDetailView: View {
                 VideoThumbnail(url: url)
                     .onTapGesture { playing = PlayableVideo(url: url) }
             }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(rec.createdAt.formatted(date: .abbreviated, time: .shortened))
-                    .font(.subheadline.weight(.medium))
-                Text("\(RecordingFormat.duration(rec.durationMs)) · \(RecordingFormat.size(rec.sizeBytes))")
-                    .font(.caption).foregroundStyle(.secondary)
-                statusBadge(rec)
+            Button {
+                detail = DetailItem(recording: rec)
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(rec.createdAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(.subheadline.weight(.medium))
+                    Text("\(RecordingFormat.duration(rec.durationMs)) · \(RecordingFormat.size(rec.sizeBytes))")
+                        .font(.caption).foregroundStyle(.secondary)
+                    statusBadge(rec)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             Spacer()
             VStack(spacing: 10) {
                 if let p = progress[rec.id] {
@@ -131,7 +154,7 @@ struct JobDetailView: View {
 
     private var recordBar: some View {
         NavigationLink {
-            RecordView(job: job)
+            RecordView(job: job, profile: coachingProfile, profileDebug: coachingDebug)
         } label: {
             Label("Record", systemImage: "record.circle")
                 .font(.headline)
@@ -176,8 +199,7 @@ struct JobDetailView: View {
                     try? context.save()
                 }
             }
-            await MainActor.run { progress[id] = nil }
-            await loadStatuses()   // reflect the new "pending review" submission
+            await MainActor.run { progress[id] = nil; pollTrigger += 1 }   // start polling for the score
         }
     }
 
@@ -187,30 +209,64 @@ struct JobDetailView: View {
         try? context.save()
     }
 
-    // MARK: - Review status
+    // MARK: - Score badge
 
     @ViewBuilder
     private func statusBadge(_ rec: Recording) -> some View {
         let s = displayStatus(rec)
-        Text(s.text)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 8).padding(.vertical, 2)
-            .background(s.color.opacity(0.18), in: Capsule())
-            .foregroundStyle(s.color)
+        HStack(spacing: 4) {
+            if s.spinner { ProgressView().controlSize(.mini) }
+            Text(s.text)
+        }
+        .font(.caption2.weight(.semibold))
+        .padding(.horizontal, 8).padding(.vertical, 2)
+        .background(s.color.opacity(0.18), in: Capsule())
+        .foregroundStyle(s.color)
     }
 
-    /// Prefer the server review status; fall back to the local upload status.
-    private func displayStatus(_ rec: Recording) -> (text: String, color: Color) {
-        switch submissionStatus[rec.id.uuidString.lowercased()] {
-        case "approved": return ("Approved", .appCollector)
-        case "rejected": return ("Rejected", .appDanger)
-        case "pending":  return ("Pending review", .appAmber)
-        default:         return (rec.status.label, rec.status.color)
+    /// Shows the AI score when available, a "Scoring…" spinner while pending,
+    /// or the local upload status before upload.
+    private func displayStatus(_ rec: Recording) -> (text: String, color: Color, spinner: Bool) {
+        guard let s = scores[rec.id.uuidString.lowercased()] else {
+            if rec.status == .uploaded { return ("Scoring…", .appAmber, true) }
+            return (rec.status.label, rec.status.color, false)
+        }
+        if s.isScoring { return ("Scoring…", .appAmber, true) }
+        if let value = s.score {
+            let passed = s.success ?? (value >= 5)
+            return ("\(passed ? "✓" : "✗") \(scoreText(value))/10",
+                    passed ? .appCollector : .appDanger, false)
+        }
+        return (rec.status.label, rec.status.color, false)
+    }
+
+    private func scoreText(_ value: Double) -> String {
+        value == value.rounded() ? String(Int(value)) : String(format: "%.1f", value)
+    }
+
+    private var hasPendingScores: Bool {
+        recordings.contains { rec in
+            rec.status == .uploaded && (scores[rec.id.uuidString.lowercased()]?.isScoring ?? true)
         }
     }
 
-    private func loadStatuses() async {
-        let map = (try? await SubmissionsService.statuses(taskId: job.id.uuidString)) ?? [:]
-        await MainActor.run { submissionStatus = map }
+    private func loadScores() async {
+        let map = (try? await ScoringService.scores(taskId: job.id.uuidString)) ?? [:]
+        await MainActor.run { scores = map }
     }
+
+    /// Load once, then poll every few seconds while anything is still scoring.
+    private func pollScores() async {
+        await loadScores()
+        while !Task.isCancelled && hasPendingScores {
+            try? await Task.sleep(for: .seconds(4))
+            await loadScores()
+        }
+    }
+}
+
+/// Wrapper so a recording can drive `.sheet(item:)`.
+private struct DetailItem: Identifiable {
+    let id = UUID()
+    let recording: Recording
 }
