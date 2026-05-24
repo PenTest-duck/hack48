@@ -10,6 +10,7 @@ struct RecordingDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var score: RecordingScore?
     @State private var loading = true
+    @State private var transcript: TranscriptFile?
 
     var body: some View {
         NavigationStack {
@@ -21,6 +22,7 @@ struct RecordingDetailView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                     scoreCard
+                    transcriptCard
                     metaCard
                 }
                 .padding()
@@ -32,6 +34,7 @@ struct RecordingDetailView: View {
                 ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
             }
             .task { await load() }
+            .task { await pollTranscript() }
         }
     }
 
@@ -83,6 +86,60 @@ struct RecordingDetailView: View {
         value == value.rounded() ? String(Int(value)) : String(format: "%.1f", value)
     }
 
+    // MARK: - Transcript
+
+    private var transcriptCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Transcript").font(.headline)
+                Spacer()
+                Button { loadTranscript() } label: { Image(systemName: "arrow.clockwise") }
+            }
+            if let t = transcript {
+                if t.segments.isEmpty {
+                    hint(t.text.isEmpty ? "No speech transcribed." : t.text)
+                } else {
+                    ForEach(Array(t.segments.enumerated()), id: \.offset) { _, seg in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(String(format: "%.2f–%.2f", seg.startTime, seg.endTime))
+                                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                                .frame(width: 96, alignment: .leading)
+                            Text(seg.text).font(.subheadline)
+                        }
+                    }
+                }
+                if let s = t.status, !s.isEmpty {
+                    Text(s).font(.caption2).foregroundStyle(.secondary)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Transcribing on-device… (tap ↻ to refresh)").foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color.appSurface, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func loadTranscript() {
+        let url = RecordingStore.folderURL(for: recording.folderName)
+            .appendingPathComponent("transcript.json")
+        guard let data = try? Data(contentsOf: url),
+              let t = try? JSONDecoder().decode(TranscriptFile.self, from: data) else { return }
+        transcript = t
+    }
+
+    /// transcript.json is written asynchronously after recording — poll for it.
+    private func pollTranscript() async {
+        for _ in 0..<25 {
+            loadTranscript()
+            if transcript != nil { return }
+            try? await Task.sleep(for: .seconds(3))
+        }
+    }
+
     // MARK: - Meta
 
     private var metaCard: some View {
@@ -113,5 +170,23 @@ struct RecordingDetailView: View {
         let map = (try? await ScoringService.scores(taskId: taskId)) ?? [:]
         let mine = map[recording.id.uuidString.lowercased()]
         await MainActor.run { score = mine }
+    }
+}
+
+/// Decodes the on-disk transcript.json (text + timestamped segments + debug status).
+struct TranscriptFile: Decodable {
+    let text: String
+    let status: String?
+    let segments: [Seg]
+
+    struct Seg: Decodable {
+        let startTime: Double
+        let endTime: Double
+        let text: String
+        enum CodingKeys: String, CodingKey {
+            case startTime = "start_time"
+            case endTime = "end_time"
+            case text
+        }
     }
 }

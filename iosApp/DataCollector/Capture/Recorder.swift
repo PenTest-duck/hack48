@@ -257,8 +257,11 @@ final class Recorder: NSObject, ObservableObject {
         // camera/GPU conflict. Writes transcript.json when done (first run downloads
         // the model, so it can take a bit).
         Task.detached(priority: .utility) {
+            // Keep running ~30s even if the user leaves the app (e.g. opens Files).
+            let bg = await MainActor.run { UIApplication.shared.beginBackgroundTask(withName: "whisper") }
             let (segments, status) = await WhisperTranscriber.transcribe(videoURL: videoURL)
             try? RecordingStore.writeTranscript(segments, status: status, to: transcriptURL)
+            await MainActor.run { if bg != .invalid { UIApplication.shared.endBackgroundTask(bg) } }
         }
 
         DispatchQueue.main.async {
