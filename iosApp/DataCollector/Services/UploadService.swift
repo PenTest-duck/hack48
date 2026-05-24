@@ -139,6 +139,43 @@ enum UploadService {
         }
     }
 
+    /// Uploads a bundle as a task's reference example to `references/<taskId>/` in
+    /// the recordings bucket, and returns that storage path (for tasks.reference_path).
+    static func uploadReference(
+        folderName: String,
+        streams: [String],
+        taskId: String,
+        onProgress: @escaping (Double) -> Void = { _ in }
+    ) async throws -> String {
+        guard let token = Backend.supabase.auth.currentSession?.accessToken else {
+            throw UploadError.notSignedIn
+        }
+        let bucket = SupabaseConfig.recordingsBucket
+        let folder = RecordingStore.folderURL(for: folderName)
+        let prefix = "references/\(taskId.lowercased())"
+
+        func report(_ v: Double) { DispatchQueue.main.async { onProgress(min(max(v, 0), 1)) } }
+
+        let files: [(url: URL, name: String, size: Int64)] = streams.compactMap { name in
+            let url = folder.appendingPathComponent(name)
+            guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return nil }
+            return (url, name, Int64(size))
+        }
+        let total = max(1, files.reduce(0) { $0 + $1.size })
+        var completed: Int64 = 0
+        for file in files {
+            try await streamToStorage(
+                fileURL: file.url, bucket: bucket,
+                objectPath: "\(prefix)/\(file.name)",
+                mimeType: contentType(for: file.name), token: token,
+                onBytesSent: { sent in report(Double(completed + sent) / Double(total)) }
+            )
+            completed += file.size
+            report(Double(completed) / Double(total))
+        }
+        return "\(prefix)/"
+    }
+
     private static func contentType(for filename: String) -> String {
         if filename.hasSuffix(".mp4")   { return "video/mp4" }
         if filename.hasSuffix(".mov")   { return "video/quicktime" }

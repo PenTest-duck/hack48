@@ -1,6 +1,7 @@
 import Foundation
 import ARKit
 import AVFoundation
+import CoreImage
 import QuartzCore
 import UIKit
 import simd
@@ -16,6 +17,15 @@ final class Recorder: NSObject, ObservableObject {
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var elapsed: TimeInterval = 0
+    @Published var live = LiveMetrics()
+
+    /// Real-time capture signals for on-device coaching (preview + recording).
+    struct LiveMetrics {
+        var luminance: Double = 0.5      // 0...1 average brightness
+        var motionDegPerSec: Double = 0  // camera rotational speed
+        var distanceM: Double? = nil     // LiDAR depth at center
+        var hasData = false
+    }
 
     private weak var arSession: ARSession?
     private let delegateQueue = DispatchQueue(label: "recorder.ar.delegate")
@@ -39,6 +49,21 @@ final class Recorder: NSObject, ObservableObject {
     private var depthWidth = 0
     private var depthHeight = 0
     private let depthInterval: TimeInterval = 1.0 / 10.0   // ~10 fps
+
+    // Live coaching metrics (preview + recording).
+    private var lastLiveUpdate: TimeInterval = 0
+    private var prevTransform: simd_float4x4?
+    private var prevTransformTime: TimeInterval = 0
+    private var motionEMA: Double = 0
+
+    // Optional JPEG frame feed for semantic coaching (e.g. Gemini Live), ~1 fps.
+    // Conversion runs on its own queue with drop-if-busy so it never stalls the
+    // AR delegate queue (which would make ARKit retain frames and freeze).
+    private let ciContext = CIContext(options: nil)
+    private let coachingQueue = DispatchQueue(label: "recorder.coaching.jpeg", qos: .utility)
+    private var lastCoachingEmit: TimeInterval = 0
+    private var coachingBusy = false   // touched only on delegateQueue
+    var onCoachingFrame: ((Data) -> Void)?
 
     private var bundle: RecordingBundle?
     private var startWall = Date()
@@ -287,6 +312,95 @@ final class Recorder: NSObject, ObservableObject {
 
     /// Appends one LiDAR depth frame to depth.bin:
     /// [Float64 timestamp (LE)] + [width*height row-major Float32 metres].
+    // MARK: - Live coaching metrics
+
+    private func updateLiveMetrics(_ frame: ARFrame) {
+        let t = frame.timestamp
+        if let prev = prevTransform, t > prevTransformTime {
+            let q1 = simd_quatf(prev)
+            let q2 = simd_quatf(frame.camera.transform)
+            let dot = Double(min(1, abs(simd_dot(q1.vector, q2.vector))))
+            let deg = 2.0 * acos(dot) * 180.0 / Double.pi
+            let dt = t - prevTransformTime
+            motionEMA = motionEMA * 0.8 + (deg / dt) * 0.2
+        }
+        prevTransform = frame.camera.transform
+        prevTransformTime = t
+
+        guard t - lastLiveUpdate >= 0.25 else { return }   // ~4 Hz UI updates
+        lastLiveUpdate = t
+
+        let lum = averageLuminance(frame.capturedImage)
+        let dist = centerDepth(frame)
+        let motion = motionEMA
+        DispatchQueue.main.async {
+            self.live = LiveMetrics(luminance: lum, motionDegPerSec: motion, distanceM: dist, hasData: true)
+        }
+    }
+
+    /// Emit a downscaled JPEG frame for a semantic coach (throttled to ~1 fps).
+    /// Runs on the AR delegate queue, so the conversion stays off the main thread.
+    private func emitCoachingFrame(_ frame: ARFrame) {
+        guard let consumer = onCoachingFrame else { return }
+        let t = frame.timestamp
+        guard t - lastCoachingEmit >= 1.0, !coachingBusy else { return }   // 1 fps, skip if still converting
+        lastCoachingEmit = t
+        coachingBusy = true
+        // Retain just the image buffer (not the whole ARFrame) and convert off-queue.
+        let pixelBuffer = frame.capturedImage
+        coachingQueue.async { [weak self] in
+            guard let self else { return }
+            let data = self.jpeg(from: pixelBuffer, maxWidth: 640)
+            self.delegateQueue.async { self.coachingBusy = false }
+            if let data { consumer(data) }
+        }
+    }
+
+    private func jpeg(from pixelBuffer: CVPixelBuffer, maxWidth: CGFloat) -> Data? {
+        var image = CIImage(cvPixelBuffer: pixelBuffer)
+        let width = image.extent.width
+        if width > maxWidth {
+            let scale = maxWidth / width
+            image = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        }
+        guard let cg = ciContext.createCGImage(image, from: image.extent) else { return nil }
+        return UIImage(cgImage: cg).jpegData(compressionQuality: 0.6)
+    }
+
+    /// Average luma of the Y plane (sampled), 0...1.
+    private func averageLuminance(_ pixelBuffer: CVPixelBuffer) -> Double {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0) else { return 0.5 }
+        let width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0)
+        let height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0)
+        let bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
+        let ptr = base.assumingMemoryBound(to: UInt8.self)
+        let stepX = max(1, width / 24), stepY = max(1, height / 24)
+        var sum = 0, count = 0
+        for y in stride(from: 0, to: height, by: stepY) {
+            let row = ptr + y * bytesPerRow
+            for x in stride(from: 0, to: width, by: stepX) {
+                sum += Int(row[x]); count += 1
+            }
+        }
+        return count > 0 ? Double(sum) / Double(count) / 255.0 : 0.5
+    }
+
+    /// LiDAR depth (metres) at the center of the frame, if available.
+    private func centerDepth(_ frame: ARFrame) -> Double? {
+        guard let depth = frame.sceneDepth?.depthMap else { return nil }
+        CVPixelBufferLockBaseAddress(depth, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(depth, .readOnly) }
+        let width = CVPixelBufferGetWidth(depth)
+        let height = CVPixelBufferGetHeight(depth)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(depth)
+        guard let base = CVPixelBufferGetBaseAddress(depth) else { return nil }
+        let row = base.advanced(by: (height / 2) * bytesPerRow).assumingMemoryBound(to: Float32.self)
+        let value = row[width / 2]
+        return value.isFinite && value > 0 ? Double(value) : nil
+    }
+
     private func appendDepth(_ depthMap: CVPixelBuffer, at t: TimeInterval, to url: URL) {
         if depthHandle == nil {
             FileManager.default.createFile(atPath: url.path, contents: nil)
@@ -331,6 +445,8 @@ final class Recorder: NSObject, ObservableObject {
 
 extension Recorder: ARSessionDelegate {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        updateLiveMetrics(frame)
+        emitCoachingFrame(frame)
         guard isRecording, let bundle else { return }
         let t = frame.timestamp
         lastFrameTime = t
