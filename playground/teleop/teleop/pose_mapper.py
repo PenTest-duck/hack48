@@ -4,7 +4,7 @@ import math
 from dataclasses import dataclass
 from numbers import Real
 
-from .types import HandSample, Landmark, RobotTargets
+from .types import ArmSample, HandSample, Landmark, PoseLandmark, RobotTargets, TeleopSample
 
 
 WRIST = 0
@@ -166,9 +166,6 @@ def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
 
-from .types import ArmSample, PoseLandmark
-
-
 @dataclass(frozen=True)
 class ArmFeatures:
     shoulder_pan: float
@@ -255,4 +252,38 @@ class ArmMapper:
             wrist_flex=self._neutral_targets.wrist_flex,
             wrist_roll=self._neutral_targets.wrist_roll,
             gripper=self._neutral_targets.gripper,
+        )
+
+
+class TeleopMapper:
+    def __init__(self, config: MappingConfig) -> None:
+        self.config = config
+        self.arm = ArmMapper(config)
+        self.wrist = WristMapper(config)
+
+    @property
+    def neutral_ready(self) -> bool:
+        return self.arm.neutral_ready and self.wrist.neutral_ready
+
+    def capture_neutral(self, sample: TeleopSample, robot_targets: RobotTargets) -> None:
+        if sample.arm is None or sample.hand is None:
+            raise ValueError("TeleopMapper neutral capture requires both arm and hand samples")
+        self.arm.capture_neutral(sample.arm, robot_targets)
+        self.wrist.capture_neutral(sample.hand, robot_targets)
+
+    def map(self, sample: TeleopSample) -> RobotTargets:
+        if sample.arm is None or sample.hand is None:
+            raise ValueError("TeleopMapper map requires both arm and hand samples")
+        if not self.neutral_ready:
+            raise RuntimeError("Neutral TeleopMapper sample has not been captured")
+
+        arm_targets = self.arm.map(sample.arm)
+        wrist_targets = self.wrist.map(sample.hand)
+        return RobotTargets(
+            shoulder_pan=arm_targets.shoulder_pan,
+            shoulder_lift=arm_targets.shoulder_lift,
+            elbow_flex=arm_targets.elbow_flex,
+            wrist_flex=wrist_targets.wrist_flex,
+            wrist_roll=wrist_targets.wrist_roll,
+            gripper=wrist_targets.gripper,
         )

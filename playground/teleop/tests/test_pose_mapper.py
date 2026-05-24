@@ -309,3 +309,81 @@ def test_arm_features_rejects_degenerate_forearm() -> None:
     )
     with pytest.raises(ValueError, match="Forearm segment is too short"):
         extract_arm_features(sample, MappingConfig())
+
+
+from teleop.pose_mapper import TeleopMapper
+from teleop.types import TeleopSample
+
+
+def teleop_sample(*, arm_sample=None, hand_sample=None, timestamp_ms=1000) -> TeleopSample:
+    return TeleopSample(
+        arm=arm_sample if arm_sample is not None else arm(),
+        hand=hand_sample if hand_sample is not None else hand(),
+        timestamp_ms=timestamp_ms,
+    )
+
+
+def teleop_mapper(**overrides) -> TeleopMapper:
+    defaults = dict(
+        shoulder_pan_gain=1.0,
+        shoulder_lift_gain=1.0,
+        elbow_flex_gain=1.0,
+        wrist_flex_gain=30.0,
+        wrist_roll_gain=60.0,
+        gripper_open=80.0,
+        gripper_closed=20.0,
+        pinch_closed_ratio=0.35,
+        pinch_open_ratio=1.40,
+    )
+    defaults.update(overrides)
+    return TeleopMapper(MappingConfig(**defaults))
+
+
+def test_teleop_mapper_neutral_requires_both_arm_and_hand() -> None:
+    mapper = teleop_mapper()
+
+    with pytest.raises(ValueError, match="requires both arm and hand"):
+        mapper.capture_neutral(
+            TeleopSample(arm=None, hand=hand(), timestamp_ms=1000), baseline_targets()
+        )
+    with pytest.raises(ValueError, match="requires both arm and hand"):
+        mapper.capture_neutral(
+            TeleopSample(arm=arm(), hand=None, timestamp_ms=1000), baseline_targets()
+        )
+
+
+def test_teleop_mapper_emits_six_dof_targets_after_neutral_capture() -> None:
+    mapper = teleop_mapper()
+    sample = teleop_sample()
+    mapper.capture_neutral(sample, baseline_targets())
+
+    targets = mapper.map(sample)
+
+    assert targets.shoulder_pan == pytest.approx(baseline_targets().shoulder_pan, abs=1e-6)
+    assert targets.shoulder_lift == pytest.approx(baseline_targets().shoulder_lift, abs=1e-6)
+    assert targets.elbow_flex == pytest.approx(baseline_targets().elbow_flex, abs=1e-6)
+    assert targets.wrist_flex == pytest.approx(baseline_targets().wrist_flex)
+    assert targets.wrist_roll == pytest.approx(baseline_targets().wrist_roll)
+    assert targets.gripper == pytest.approx(80.0)
+
+
+def test_teleop_mapper_neutral_ready_requires_both_sides() -> None:
+    mapper = teleop_mapper()
+    assert mapper.neutral_ready is False
+
+    mapper.capture_neutral(teleop_sample(), baseline_targets())
+    assert mapper.neutral_ready is True
+
+
+def test_teleop_mapper_map_requires_arm_and_hand_present() -> None:
+    mapper = teleop_mapper()
+    mapper.capture_neutral(teleop_sample(), baseline_targets())
+
+    with pytest.raises(ValueError, match="requires both arm and hand"):
+        mapper.map(TeleopSample(arm=None, hand=hand(), timestamp_ms=1000))
+
+
+def test_teleop_mapper_map_requires_neutral_capture() -> None:
+    mapper = teleop_mapper()
+    with pytest.raises(RuntimeError, match="Neutral .* has not been captured"):
+        mapper.map(teleop_sample())
