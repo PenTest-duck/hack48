@@ -9,7 +9,7 @@ Build a new playground prototype at `playground/teleop2/` that explores real-tim
 Where the existing `playground/teleop/` uses a chest-mounted egocentric camera and MediaPipe Pose + Hand to drive all six joints via joint-mimic mapping, this prototype targets a more flexible **slanted top-down view onto the user's hand** (similar to what a desk-mounted webcam naturally captures when the user reaches forward). The trade-off is one fewer controlled joint: `elbow_flex` stays at its baseline value because there is no reliable elbow signal from a hand-only view. The remaining five joints are controlled:
 
 - `shoulder_pan.pos` — driven by hand wrist landmark's image-plane x position
-- `shoulder_lift.pos` — driven by hand wrist landmark's image-plane y position
+- `shoulder_lift.pos` — driven by hand apparent size (proxy for depth from the camera)
 - `wrist_flex.pos` — driven by hand flex relative to neutral (same math as exocentric)
 - `wrist_roll.pos` — driven by hand roll relative to neutral (same math as exocentric)
 - `gripper.pos` — driven by thumb-index pinch openness (same math as exocentric)
@@ -26,7 +26,7 @@ This prototype will not implement Pose Landmarker integration, inverse kinematic
 
 The script starts in a paused state. It opens the camera, runs MediaPipe Hand Landmarker, and displays the detected hand overlay. No robot commands are emitted until a neutral pose has been captured.
 
-The user holds their hand in a comfortable resting position roughly in the centre of the frame, fingers relaxed open, and presses `n` to capture neutral. Neutral stores the hand wrist landmark's image-plane position (the "zero" for shoulder pan and lift) along with the wrist roll, wrist flex, and pinch baselines. The gripper command is not neutral-relative; it remains an absolute mapping from current pinch openness to the configured open/closed targets.
+The user holds their hand in a comfortable resting position roughly in the centre of the frame at a comfortable distance from the camera, fingers relaxed open, and presses `n` to capture neutral. Neutral stores the hand wrist landmark's image-plane x position (the "zero" for shoulder pan), the hand's apparent size (the "zero" for shoulder lift), and the wrist roll, wrist flex, and pinch baselines. The gripper command is not neutral-relative; it remains an absolute mapping from current pinch openness to the configured open/closed targets.
 
 The user presses `space` to toggle sync. In dry-run mode, sync updates target values shown on the overlay. In robot mode, sync sends filtered targets to the SO101 follower at the configured control rate. An optional `--deadman-key` mode requires recent key activity before commands flow, in addition to the sync toggle.
 
@@ -69,30 +69,36 @@ The `--mirror-hand {auto,on,off}` flag from `playground/teleop/` carries over to
 
 ### Shoulder pan and lift (new)
 
-The hand wrist landmark (index 0, the most stable point on the hand — invariant to finger pose, pinch, and wrist orientation) drives the two shoulder joints from its image-plane position.
+The hand wrist landmark (index 0, the most stable point on the hand — invariant to finger pose, pinch, and wrist orientation) drives `shoulder_pan` from its image-plane x position. `shoulder_lift` is driven by the hand's **apparent size** as a proxy for depth: with a slanted top-down camera, lifting the hand toward the ceiling also brings it closer to the camera, so the hand grows in the image. Hand size is a more direct proxy for "how lifted is the arm" than image-y, which depends on camera tilt and hand orientation.
 
 ```
-pan_x  = hand.landmarks[0].x     # in [0, 1], normalized image coords
-lift_y = hand.landmarks[0].y     # in [0, 1], +y is DOWN in image coords
+pan_x      = hand.landmarks[0].x                     # in [0, 1], normalized image coords
+hand_size  = distance(index_mcp, pinky_mcp)          # the same hand_width already used by WristMapper
+                                                     # measured in normalized image coords (dimensionless)
 
-pan_delta  = pan_x  - neutral.pan_x
-lift_delta = lift_y - neutral.lift_y
+pan_delta  = pan_x - neutral.pan_x
+size_ratio = (hand_size - neutral.hand_size) / neutral.hand_size   # relative change, e.g. +0.20 for 20% larger
 if config.invert_shoulder_lift:
-    lift_delta = -lift_delta
+    size_ratio = -size_ratio
 
 shoulder_pan_target  = neutral_targets.shoulder_pan  + pan_delta  * shoulder_pan_gain
-shoulder_lift_target = neutral_targets.shoulder_lift + lift_delta * shoulder_lift_gain
+shoulder_lift_target = neutral_targets.shoulder_lift + size_ratio * shoulder_lift_gain
 ```
 
-A new `--invert-shoulder-lift` CLI flag (default off, meaning hand-up-in-frame produces a positive image-coord delta and a *negative* shoulder_lift delta) lets the operator flip the convention to match their physical intuition and the SO101's calibration. The first physical run is expected to test both settings.
+`hand_size` is computed from the same `hand_width` measurement already used by `WristMapper` (distance from `index_mcp` to `pinky_mcp`). Both MCP landmarks are knuckle-level rigid points that don't shift with finger pose or pinch, which makes the measurement stable. `size_ratio` is normalized by the neutral hand size so a 20% larger hand always produces the same `shoulder_lift` delta regardless of which absolute distance the operator chose at neutral capture.
 
-There is no depth normalization; the raw image-plane coordinate is used directly. Forward/back motion of the hand causes a small drift in shoulder targets, which the operator adapts to within a session. Hand-size-based normalization was considered and rejected as a YAGNI (it adds coupling between gripper motion and shoulder motion via `hand_width` jitter).
+The hand's image-plane y coordinate is intentionally not used. It conflates camera-tilt geometry with arm motion, and the depth signal from hand size is cleaner.
+
+A `--invert-shoulder-lift` CLI flag (default off, meaning "bigger hand → larger shoulder_lift") lets the operator flip the convention to match the SO101's calibration. The first physical run is expected to test both settings.
+
+There is no compensation for the operator translating their hand toward/away from the camera at a constant arm height; that motion will be interpreted as `shoulder_lift`. The operator adapts within a session.
 
 ### Gain defaults
 
-Gains are scaled for image-coord inputs in [0, 1], which is a fundamentally different magnitude than the radian-scale inputs used in `playground/teleop/`. Defaults:
+Gains are scaled for the two new input types in this playground (image-coord delta in [0, 1] for pan; dimensionless size_ratio in roughly [-0.5, +0.5] for lift). These have fundamentally different magnitudes than the radian-scale inputs used in `playground/teleop/`. Defaults:
 
-- `--shoulder-pan-gain 60.0`, `--shoulder-lift-gain 60.0` — a hand wave across half the frame (~0.3 image-coord delta) maps to ~18° of shoulder motion, which sits inside the conservative `--shoulder-pan-limit 20` / `--shoulder-lift-limit 20` defaults.
+- `--shoulder-pan-gain 60.0` — a hand wave across half the frame (~0.3 image-coord delta) maps to ~18° of shoulder motion, which sits inside the conservative `--shoulder-pan-limit 20` default.
+- `--shoulder-lift-gain 80.0` — a 25% larger hand (size_ratio = +0.25) maps to ~20° of shoulder lift, matching `--shoulder-lift-limit 20`. The operator gets full range by moving the hand about 25% closer to the camera than at neutral.
 - `--wrist-flex-gain 30.0`, `--wrist-roll-gain 60.0`, `--gripper-open 80.0`, `--gripper-closed 20.0`, `--pinch-closed-ratio 0.35`, `--pinch-open-ratio 1.40` — unchanged from prior playgrounds.
 
 ### Holding elbow_flex
@@ -173,7 +179,12 @@ hand=Right 0.92
 pan=12.3 lift=-5.1 elb=0.0 wf=2.1 wr=-4.4 grip=45.0
 ```
 
-After neutral capture, a small crosshair is drawn at the neutral hand wrist position — a visual reference that shows the operator where "zero" is in their frame. Implemented with two `cv2.line` calls and a small filled circle.
+After neutral capture, two visual references are drawn so the operator knows where "zero" is in their frame:
+
+- A small crosshair at the neutral hand wrist x position (a vertical line spanning frame height at neutral pan_x).
+- A circle around the neutral hand wrist position with radius proportional to the neutral hand size, so the operator can see whether their current hand size matches neutral. Bigger-than-circle means shoulder is lifting; smaller means lowering.
+
+Both implemented with a handful of `cv2.line` / `cv2.circle` calls.
 
 No pose skeleton, no per-landmark visibility annotations (there are no pose landmarks to annotate).
 
@@ -184,7 +195,7 @@ Follows the same pattern as `playground/teleop/`: pure-function unit tests with 
 `test_pose_mapper.py` covers:
 
 - `WristMapper` tests lifted verbatim from `playground/teleop/tests/test_pose_mapper.py` (the wrist half; the arm half is dropped).
-- `HandPositionMapper`: hand at neutral position yields baseline shoulder_pan/lift; hand displaced by a known amount yields the expected delta × gain; `invert_shoulder_lift` flips the lift sign; `map` requires neutral capture first.
+- `HandPositionMapper`: hand at neutral position and size yields baseline shoulder_pan/lift; hand displaced laterally by a known amount yields the expected pan delta × gain; hand grown by a known size_ratio yields the expected lift delta × gain; `invert_shoulder_lift` flips the lift sign; `map` requires neutral capture first; `capture_neutral` rejects degenerate hand sizes (zero or near-zero `hand_width`) to avoid division-by-zero in `size_ratio`.
 - `TeleopMapper` combine tests: `capture_neutral` requires a hand sample; combined `RobotTargets` carries elbow_flex from baseline, arm joints from `HandPositionMapper`, wrist/gripper from `WristMapper`.
 
 `test_safety.py` covers the 6-joint filter with the visibility-related tests removed. The `min_pose_visibility` field on `SafetyConfig` is gone.
@@ -206,7 +217,8 @@ Real MediaPipe inference, real robot motion, and live FPS/latency measurement re
    - Hand stationary, fingers move → only gripper changes.
    - Hand stationary, wrist twists → only wrist_roll changes.
    - Hand stationary, wrist folds → only wrist_flex changes.
-   - Hand translates left/right → only shoulder_pan changes.
-   - Hand translates up/down → only shoulder_lift changes.
+   - Hand translates left/right (same distance from camera) → only shoulder_pan changes.
+   - Hand moves closer to / farther from camera → only shoulder_lift changes.
+   - Hand translates up/down without changing distance to camera → shoulder_lift changes only modestly (the y motion is ignored; only the small size change from the slanted camera POV contributes).
    - `elbow_flex` value never changes from baseline.
 3. Robot mode with conservative defaults and `--deadman-key x` enabled. Verify `--invert-shoulder-lift` direction matches the operator's intuition; flip if needed. Progressively widen limits after observing safe behavior.
