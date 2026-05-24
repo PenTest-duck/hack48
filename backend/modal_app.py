@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Literal
@@ -384,7 +385,7 @@ class Yolo26:
 
 @app.cls(
     image=sam_image,
-    gpu=["L4", "A10", "L40S"],
+    gpu=["H100", "A100-80GB", "L40S"],
     volumes={MODEL_ROOT: model_volume},
     timeout=20 * 60,
     scaledown_window=60,
@@ -439,7 +440,7 @@ class SAM31Segmenter:
         suffix: str = ".mp4",
         text_prompts: list[str] | None = None,
         conf: float = 0.25,
-        imgsz: int = 640,
+        imgsz: int = 512,
         max_frames: int | None = 300,
         model_path: str | None = None,
     ) -> dict[str, object]:
@@ -451,7 +452,11 @@ class SAM31Segmenter:
         with tempfile.TemporaryDirectory() as tmp:
             input_path = write_media_bytes(media, Path(tmp), suffix)
             video = is_video_suffix(suffix)
+            predictor_t0 = time.perf_counter()
             predictor = self._predictor(video=video, checkpoint=checkpoint, conf=conf, imgsz=imgsz)
+            predictor_load_s = time.perf_counter() - predictor_t0
+
+            inference_t0 = time.perf_counter()
             results = predictor(source=str(input_path), text=prompts, stream=True)
 
             frames = []
@@ -466,6 +471,14 @@ class SAM31Segmenter:
                         include_masks=True,
                     )
                 )
+            inference_s = time.perf_counter() - inference_t0
+
+        timing = {
+            "predictor_load_s": round(predictor_load_s, 3),
+            "inference_s": round(inference_s, 3),
+            "per_frame_ms": round(inference_s * 1000 / max(1, len(frames)), 2),
+        }
+        print(f"[SAM31] frames={len(frames)} imgsz={imgsz} timing={timing}")
 
         return {
             "engine": "sam-3.1-ultralytics",
@@ -475,6 +488,7 @@ class SAM31Segmenter:
             "frame_count": len(frames),
             "frames": frames,
             "settings": {"conf": conf, "imgsz": imgsz},
+            "timing": timing,
         }
 
 
