@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 function GabrielHornLogo() {
   return (
@@ -60,6 +61,54 @@ function Ticker() {
   )
 }
 
+function NavAuth() {
+  const [user, setUser] = useState<{ email?: string; role?: string } | null | undefined>(undefined)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) { setUser(null); return }
+      const role = session.user.user_metadata?.role as string | undefined
+      setUser({ email: session.user.email, role })
+    })
+  }, [])
+
+  // Still loading — render nothing to avoid flash
+  if (user === undefined) return null
+
+  if (!user) {
+    return (
+      <div className="ml-auto flex items-center gap-5 text-sm text-[var(--foreground-secondary)]">
+        <Link href="/login" className="transition-colors hover:text-white">Sign in</Link>
+        <Link href="/signup" className="btn-lab rounded-lg px-4 py-2 text-sm font-medium transition-colors hover:bg-[#4b6af0]">Get started</Link>
+      </div>
+    )
+  }
+
+  const dashHref = user.role === 'collector' ? '/collector/tasks' : '/lab/dashboard'
+
+  async function handleSignOut() {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    window.location.href = '/login'
+  }
+
+  return (
+    <>
+      <nav className="hidden md:flex items-center gap-7 text-sm text-[var(--foreground-secondary)]">
+        <Link href={dashHref} className="transition-colors hover:text-white">Dashboard</Link>
+        {user.role === 'lab' && (
+          <Link href="/lab/tasks/new" className="transition-colors hover:text-white">New Task</Link>
+        )}
+      </nav>
+      <div className="ml-auto flex items-center gap-5 text-sm text-[var(--foreground-secondary)]">
+        <span>{user.email}</span>
+        <button onClick={handleSignOut} className="transition-colors hover:text-white">Sign out</button>
+      </div>
+    </>
+  )
+}
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-[var(--background)] text-white flex flex-col">
@@ -78,23 +127,12 @@ export default function Home() {
 
       <header className="border-b border-[rgba(255,255,255,0.08)] bg-[rgba(15,15,15,0.85)] backdrop-blur-sm sticky top-0 z-30">
         <div className="mx-auto max-w-5xl px-8 py-5 flex items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-3 transition-colors hover:opacity-80">
-              <GabrielHornLogo />
-              <span className="text-base font-bold tracking-[0.01em] text-white">Aperture</span>
-            </Link>
-            <span className="px-2.5 py-1 text-xs font-bold tracking-[0.18em] uppercase rounded-full bg-[rgba(59,91,219,0.16)] text-[#aebeff]">Lab</span>
-          </div>
+          <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
+            <GabrielHornLogo />
+            <span className="text-base font-bold tracking-[0.01em] text-white">Aperture</span>
+          </Link>
 
-          <nav className="hidden md:flex items-center gap-7 text-sm text-[var(--foreground-secondary)]">
-            <Link href="/lab/dashboard" className="transition-colors hover:text-white">Dashboard</Link>
-            <Link href="/lab/tasks/new" className="transition-colors hover:text-white">New Task</Link>
-          </nav>
-
-          <div className="ml-auto flex items-center gap-5 text-sm text-[var(--foreground-secondary)]">
-            <Link href="/login" className="transition-colors hover:text-white">Sign in</Link>
-            <Link href="/signup" className="btn-lab rounded-lg px-4 py-2 text-sm font-medium transition-colors hover:bg-[#4b6af0]">Get started</Link>
-          </div>
+          <NavAuth />
         </div>
       </header>
 
