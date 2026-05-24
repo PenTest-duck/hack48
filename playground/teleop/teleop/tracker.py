@@ -263,3 +263,73 @@ def fuse_samples(
 
     chosen_hand = min(hands, key=distance)
     return TeleopSample(arm=arm, hand=chosen_hand, timestamp_ms=timestamp_ms)
+
+
+HAND_CONNECTIONS = tuple(
+    (connection.start, connection.end)
+    for connection in vision.HandLandmarksConnections.HAND_CONNECTIONS
+)
+
+
+def draw_overlay(
+    frame,
+    *,
+    arm: ArmSample | None,
+    hand: HandSample | None,
+    status_lines: list[str],
+    image_size: tuple[int, int],
+    arm_image_landmarks: dict[str, tuple[float, float]] | None = None,
+) -> None:
+    width, height = image_size
+
+    if arm is not None and arm_image_landmarks is not None:
+        labels = ("shoulder", "elbow", "wrist")
+        visibilities = (arm.shoulder.visibility, arm.elbow.visibility, arm.wrist.visibility)
+        points = []
+        for label in labels:
+            normalized = arm_image_landmarks.get(label)
+            if normalized is None:
+                points.append(None)
+                continue
+            px = max(0, min(width - 1, int(normalized[0] * width)))
+            py = max(0, min(height - 1, int(normalized[1] * height)))
+            points.append((px, py))
+        for start, end in ((0, 1), (1, 2)):
+            if points[start] is None or points[end] is None:
+                continue
+            cv2.line(frame, points[start], points[end], (255, 180, 70), 3, cv2.LINE_AA)
+        for label, point, visibility in zip(labels, points, visibilities):
+            if point is None:
+                continue
+            cv2.circle(frame, point, 7, (255, 220, 130), -1, cv2.LINE_AA)
+            cv2.putText(
+                frame,
+                f"{visibility:.2f}",
+                (point[0] + 8, point[1] - 6),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (255, 220, 130),
+                1,
+                cv2.LINE_AA,
+            )
+
+    if hand is not None:
+        hand_points = [
+            (
+                max(0, min(width - 1, int(point.x * width))),
+                max(0, min(height - 1, int(point.y * height))),
+            )
+            for point in hand.landmarks
+        ]
+        for start, end in HAND_CONNECTIONS:
+            if start >= len(hand_points) or end >= len(hand_points):
+                continue
+            cv2.line(frame, hand_points[start], hand_points[end], (65, 210, 120), 2, cv2.LINE_AA)
+        for index, point in enumerate(hand_points):
+            radius = 6 if index in {4, 8, 12, 16, 20} else 4
+            cv2.circle(frame, point, radius, (35, 115, 255), -1, cv2.LINE_AA)
+
+    for index, line in enumerate(status_lines):
+        y = 30 + index * 22
+        cv2.putText(frame, line, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (20, 20, 20), 4, cv2.LINE_AA)
+        cv2.putText(frame, line, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)

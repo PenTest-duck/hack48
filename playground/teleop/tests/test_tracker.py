@@ -2,6 +2,7 @@ import threading
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 
 from teleop.tracker import (
@@ -9,6 +10,7 @@ from teleop.tracker import (
     LatestPoseResult,
     default_hand_model_path,
     default_pose_model_path,
+    draw_overlay,
     ensure_model,
     fuse_samples,
 )
@@ -292,3 +294,59 @@ def test_fuse_samples_returns_none_arm_when_arm_missing() -> None:
     sample = fuse_samples(arm=None, hands=[hand], timestamp_ms=10)
     assert sample.arm is None
     assert sample.hand is hand
+
+
+def test_draw_overlay_does_not_modify_when_samples_are_none() -> None:
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    snapshot = frame.copy()
+    draw_overlay(
+        frame,
+        arm=None,
+        hand=None,
+        status_lines=[],
+        image_size=(320, 240),
+    )
+    assert np.array_equal(frame, snapshot)
+
+
+def test_draw_overlay_draws_pose_skeleton_lines_when_arm_present() -> None:
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    arm = ArmSample(
+        shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        elbow=PoseLandmark(0.1, 0.2, 0.0, 0.9),
+        wrist=PoseLandmark(0.2, 0.4, 0.0, 0.9),
+        wrist_image_xy=(0.5, 0.5),
+        timestamp_ms=10,
+    )
+    image_landmarks = {
+        "shoulder": (0.2, 0.2),
+        "elbow": (0.4, 0.4),
+        "wrist": (0.5, 0.5),
+    }
+    draw_overlay(
+        frame,
+        arm=arm,
+        hand=None,
+        status_lines=["status text"],
+        image_size=(320, 240),
+        arm_image_landmarks=image_landmarks,
+    )
+    assert frame.sum() > 0
+
+
+def test_draw_overlay_draws_hand_landmarks_when_hand_present() -> None:
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    hand = HandSample(
+        landmarks=[Landmark(0.5, 0.5, 0.0) for _ in range(21)],
+        handedness="Right",
+        confidence=0.9,
+        timestamp_ms=10,
+    )
+    draw_overlay(
+        frame,
+        arm=None,
+        hand=hand,
+        status_lines=[],
+        image_size=(320, 240),
+    )
+    assert frame.sum() > 0
