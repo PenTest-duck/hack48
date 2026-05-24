@@ -10,6 +10,22 @@ const cors = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const analysisKinds = [
+  "gemini_eval",
+  "mediapipe_hands",
+  "yolo_objects",
+  "sam_segments",
+  "temporal_actions",
+] as const;
+
+const analysisFilenames: Record<typeof analysisKinds[number], string> = {
+  gemini_eval: "gemini-eval.json",
+  mediapipe_hands: "mediapipe-hands.json",
+  yolo_objects: "yolo-detections.json",
+  sam_segments: "sam-segments.json",
+  temporal_actions: "temporal-actions.json",
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -58,29 +74,63 @@ Deno.serve(async (req) => {
     gps_accuracy_m: numOrNull(body.gps_accuracy_m),
     storage_path: storagePath,
     streams,
-    status: "uploaded",
+    status: "analyzing",
+    is_scoring: true,
   });
   if (dbErr) return json({ error: `recordings: ${dbErr.message}` }, 500);
 
-  const { error: subErr } = await admin.from("submissions").insert({
-    task_id: taskId,
-    collector_id: user.id, // equals profiles.id
-    storage_path: storagePath,
-    status: "pending",
-    metadata: {
-      recording_id: recordingId,
-      device_model: strOrNull(body.device_model),
-      duration_ms: numOrNull(body.duration_ms),
-      size_bytes: numOrNull(body.size_bytes),
-      gps: (numOrNull(body.gps_lat) !== null && numOrNull(body.gps_lon) !== null)
-        ? { lat: numOrNull(body.gps_lat), lon: numOrNull(body.gps_lon), accuracy_m: numOrNull(body.gps_accuracy_m) }
-        : null,
-      streams,
-    },
-  });
+  const { data: subData, error: subErr } = await admin
+    .from("submissions")
+    .insert({
+      task_id: taskId,
+      collector_id: user.id, // equals profiles.id
+      storage_path: storagePath,
+      status: "pending",
+      metadata: {
+        recording_id: recordingId,
+        device_model: strOrNull(body.device_model),
+        duration_ms: numOrNull(body.duration_ms),
+        size_bytes: numOrNull(body.size_bytes),
+        gps: (numOrNull(body.gps_lat) !== null && numOrNull(body.gps_lon) !== null)
+          ? { lat: numOrNull(body.gps_lat), lon: numOrNull(body.gps_lon), accuracy_m: numOrNull(body.gps_accuracy_m) }
+          : null,
+        streams,
+      },
+    })
+    .select("id")
+    .single();
   if (subErr) return json({ error: `submissions: ${subErr.message}` }, 500);
 
-  return json({ ok: true, recording_id: recordingId, streams }, 200);
+  const storagePathWithoutTrailingSlash = storagePath.replace(/\/+$/, "") || recordingId;
+  const jobRows = analysisKinds.map((kind) => ({
+    recording_id: recordingId,
+    kind,
+    status: "pending",
+    artifact_path: `${storagePathWithoutTrailingSlash}/analysis/${analysisFilenames[kind]}`,
+    error: null,
+    started_at: null,
+    finished_at: null,
+  }));
+  const { error: jobsErr } = await admin
+    .from("recording_analysis_jobs")
+    .upsert(jobRows, { onConflict: "recording_id,kind" });
+  if (jobsErr) return json({ error: `recording_analysis_jobs: ${jobsErr.message}` }, 500);
+
+  const modalResult = await startModalAnalysis({
+    recording_id: recordingId,
+    task_id: taskId,
+    submission_id: subData?.id ?? null,
+    storage_path: storagePath,
+  });
+
+  return json({
+    ok: true,
+    recording_id: recordingId,
+    submission_id: subData?.id ?? null,
+    streams,
+    analysis_started: modalResult.ok,
+    analysis_error: modalResult.ok ? null : modalResult.error,
+  }, 200);
 });
 
 function json(body: unknown, status: number) {
@@ -88,4 +138,36 @@ function json(body: unknown, status: number) {
     status,
     headers: { ...cors, "Content-Type": "application/json" },
   });
+}
+
+async function startModalAnalysis(payload: {
+  recording_id: string;
+  task_id: string;
+  submission_id: string | null;
+  storage_path: string;
+}) {
+  const modalUrl = Deno.env.get("MODAL_ANALYSIS_URL");
+  const modalSecret = Deno.env.get("MODAL_ANALYSIS_SECRET");
+  if (!modalUrl || !modalSecret) {
+    return { ok: false, error: "Modal analysis env is not configured" };
+  }
+
+  try {
+    const res = await fetch(modalUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Hack48-Modal-Secret": modalSecret,
+      },
+      body: JSON.stringify(payload),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      return { ok: false, error: `Modal kickoff failed (${res.status}): ${text}` };
+    }
+    return { ok: true, body: text };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: `Modal kickoff failed: ${message}` };
+  }
 }
