@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -84,8 +85,10 @@ mediapipe_image = mediapipe_runtime_image.add_local_dir(
     ignore=["**/__pycache__/**", "**/.pytest_cache/**"],
 )
 
+tas_runtime_image = mediapipe_runtime_image.pip_install("google-genai>=1.0.0")
+
 tas_image = (
-    mediapipe_runtime_image.add_local_dir(
+    tas_runtime_image.add_local_dir(
         BACKEND_PACKAGE_DIR,
         remote_path="/root/backend",
         ignore=["**/__pycache__/**", "**/.pytest_cache/**"],
@@ -132,6 +135,153 @@ def _upload_output(payload: object, output_path: str) -> None:
         write_output_json(Path(output_path).expanduser().resolve(), payload)
     else:
         print(json.dumps(payload, indent=2, ensure_ascii=True))
+
+
+class _GeminiTemporalLabel:
+    def __init__(
+        self,
+        *,
+        meaningful_manipulation: bool,
+        caption: str,
+        object_name: str | None,
+        confidence: float,
+        reason: str,
+    ) -> None:
+        self.meaningful_manipulation = meaningful_manipulation
+        self.caption = caption
+        self.object_name = object_name
+        self.confidence = confidence
+        self.reason = reason
+
+    def as_record(self) -> dict[str, object]:
+        return {
+            "meaningful_manipulation": self.meaningful_manipulation,
+            "caption": self.caption,
+            "object": self.object_name,
+            "confidence": self.confidence,
+            "reason": self.reason,
+        }
+
+
+class GeminiTemporalLabeler:
+    def __init__(self, *, model: str, cache_dir: Path) -> None:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY is required for temporal action labelling.")
+
+        from google import genai
+
+        self.model = model
+        self.client = genai.Client(api_key=api_key)
+        self.cache_dir = cache_dir.expanduser().resolve()
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def label(self, segment: object, contact_sheet_path: Path) -> _GeminiTemporalLabel:
+        cache_path = self._cache_path(segment, contact_sheet_path)
+        if cache_path.exists():
+            cached = json.loads(cache_path.read_text())
+            return self._normalize(cached["label"])
+
+        from google.genai import types
+
+        image_bytes = contact_sheet_path.read_bytes()
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=[
+                self._prompt(segment),
+                types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
+            ],
+            config=types.GenerateContentConfig(
+                temperature=0,
+                response_mime_type="application/json",
+            ),
+        )
+        text = getattr(response, "text", None)
+        if not text:
+            raise RuntimeError("Gemini returned an empty temporal action label.")
+
+        payload = _extract_json_object(text)
+        label = self._normalize(payload)
+        cache_path.write_text(
+            json.dumps(
+                {
+                    "model": self.model,
+                    "prompt_version": "tas-gemini-v1",
+                    "label": label.as_record(),
+                    "raw_response": text,
+                },
+                ensure_ascii=True,
+                indent=2,
+            )
+        )
+        return label
+
+    def _cache_path(self, segment: object, contact_sheet_path: Path) -> Path:
+        digest = hashlib.sha256()
+        digest.update(b"tas-gemini-v1")
+        digest.update(self.model.encode("utf-8"))
+        digest.update(str(getattr(segment, "hand", "")).encode("utf-8"))
+        digest.update(str(getattr(segment, "start_frame", "")).encode("ascii"))
+        digest.update(str(getattr(segment, "end_frame", "")).encode("ascii"))
+        digest.update(contact_sheet_path.read_bytes())
+        return self.cache_dir / f"{digest.hexdigest()}.json"
+
+    def _prompt(self, segment: object) -> str:
+        hand = getattr(segment, "hand", "tracked")
+        start_sec = float(getattr(segment, "start_sec", 0.0))
+        end_sec = float(getattr(segment, "end_sec", 0.0))
+        return f"""You are annotating egocentric hand-manipulation video clips.
+The contact sheet shows sampled frames from one short clip, with a colored trajectory marking the {hand} hand.
+Describe only the action performed by that hand.
+Use an imperative robot-instruction style, for example "Pick up the mug", "Open the drawer", "Wipe the counter".
+
+Return strict JSON only:
+{{
+  "meaningful_manipulation": true,
+  "caption": "short imperative caption or N/A",
+  "object": "object name or null",
+  "confidence": 0.0,
+  "reason": "short reason"
+}}
+
+Rules:
+- If the hand is idle, gesturing, occluded, or not manipulating an object, return meaningful_manipulation false and caption "N/A".
+- Prefer short atomic actions.
+- Do not describe camera motion.
+- Do not invent objects that are not visible.
+- The clip spans {start_sec:.2f}s to {end_sec:.2f}s in the source video."""
+
+    def _normalize(self, payload: dict[str, object]) -> _GeminiTemporalLabel:
+        meaningful = bool(payload.get("meaningful_manipulation", False))
+        caption = str(payload.get("caption") or "N/A").strip()
+        if not meaningful:
+            caption = "N/A"
+
+        raw_confidence = payload.get("confidence", 0.0) or 0.0
+        confidence = min(1.0, max(0.0, float(raw_confidence)))
+        raw_object = payload.get("object")
+        object_name = None if raw_object in ("", "null", None) else str(raw_object)
+
+        return _GeminiTemporalLabel(
+            meaningful_manipulation=meaningful,
+            caption=caption,
+            object_name=object_name,
+            confidence=confidence,
+            reason=str(payload.get("reason") or ""),
+        )
+
+
+def _extract_json_object(text: str) -> dict[str, object]:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = stripped.strip("`")
+        if stripped.lower().startswith("json"):
+            stripped = stripped[4:].strip()
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError(f"Could not find JSON object in Gemini response: {text[:200]}")
+    return json.loads(stripped[start : end + 1])
 
 
 @app.cls(
@@ -384,6 +534,7 @@ class MediaPipeHands:
 
 @app.cls(
     image=tas_image,
+    secrets=[backend_secret],
     volumes={MODEL_ROOT: model_volume},
     cpu=2.0,
     memory=6144,
@@ -418,7 +569,7 @@ class TemporalActionSegmenter:
         if not is_video_suffix(suffix):
             raise ValueError("Temporal action segmentation expects a video input.")
 
-        from temporal_action_segmentation.pipeline import PipelineConfig, process_videos
+        from temporal_action_segmentation.pipeline import PipelineConfig, process_video
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -432,16 +583,26 @@ class TemporalActionSegmenter:
                 max_seg_s=max_seg_s,
                 min_visible_ratio=min_visible_ratio,
                 min_motion=min_motion,
-                render_contact_sheets=False,
+                render_contact_sheets=True,
                 write_review=False,
-                labeler="none",
+                labeler="gemini",
+                openai_model=os.environ.get("GEMINI_MODEL", "gemini-3.5-flash"),
                 max_segments=max_segments,
             )
-            records = process_videos([input_path], config)
+            labeler = GeminiTemporalLabeler(
+                model=os.environ.get("GEMINI_MODEL", "gemini-3.5-flash"),
+                cache_dir=output_dir / "cache",
+            )
+            records = process_video(input_path, config, labeler)
+            records.sort(key=lambda item: (item["video_id"], item["hand"], item["start_sec"]))
 
         return {
             "engine": "hack48-temporal-action-segmentation",
             "model": str(self.model_path),
+            "labeler": {
+                "engine": "gemini",
+                "model": os.environ.get("GEMINI_MODEL", "gemini-3.5-flash"),
+            },
             "segment_count": len(records),
             "segments": records,
             "settings": {
