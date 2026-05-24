@@ -571,14 +571,26 @@ def process_recording(payload: dict) -> dict[str, object]:
                 if kind == "gemini_eval":
                     continue
 
-                summary = detected_object_summary(artifact_payload) if kind == "yolo_objects" else None
-                run_remote_analyzer(api, request, kind, artifact_payload, summary)
-                if kind == "yolo_objects":
-                    api.patch_rows(
-                        "recordings",
-                        f"id=eq.{request.recording_id}",
-                        {"detected_objects": summary},
+                try:
+                    summary = detected_object_summary(artifact_payload) if kind == "yolo_objects" else None
+                    run_remote_analyzer(api, request, kind, artifact_payload, summary)
+                    if kind == "yolo_objects":
+                        api.patch_rows(
+                            "recordings",
+                            f"id=eq.{request.recording_id}",
+                            {"detected_objects": summary},
+                        )
+                except Exception as exc:
+                    failed = True
+                    mark_job(
+                        api,
+                        request.recording_id,
+                        kind,
+                        "failed",
+                        error=_error_message(exc),
+                        finished_at=utc_now(),
                     )
+                    continue
 
         final_status = update_final_status(api, request.recording_id)
         return {
