@@ -1,4 +1,12 @@
-from backend.tools.e2e_upload_bundle import build_submit_payload, patch_metadata
+import pytest
+
+from backend.tools.e2e_upload_bundle import (
+    build_submit_payload,
+    ensure_analysis_started,
+    patch_metadata,
+    poll_all_jobs,
+    poll_score,
+)
 
 
 def test_patch_metadata_sets_recording_and_task_ids():
@@ -42,3 +50,119 @@ def test_build_submit_payload_matches_ios_shape():
         "storage_path": "rec/",
         "streams": ["video.mp4", "imu.jsonl"],
     }
+
+
+def test_ensure_analysis_started_fails_on_explicit_false():
+    with pytest.raises(RuntimeError, match="Modal analysis env is not configured"):
+        ensure_analysis_started(
+            {
+                "analysis_started": False,
+                "analysis_error": "Modal analysis env is not configured",
+            }
+        )
+
+
+def test_poll_score_fails_when_scoring_done_without_fields():
+    api = FakeApi(
+        recording={
+            "id": "rec",
+            "is_scoring": False,
+            "summary": "",
+            "success": None,
+            "score": None,
+        },
+        jobs=[
+            {
+                "kind": "gemini_eval",
+                "status": "failed",
+                "artifact_path": "rec/analysis/gemini-eval.json",
+                "error": "Gemini quota exceeded",
+            }
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="Gemini quota exceeded"):
+        poll_score(api, "rec", timeout_s=10)
+
+
+def test_poll_all_jobs_fails_on_terminal_failed_jobs():
+    api = FakeApi(
+        jobs=[
+            {
+                "kind": "gemini_eval",
+                "status": "succeeded",
+                "artifact_path": "rec/analysis/gemini-eval.json",
+                "error": None,
+            },
+            {
+                "kind": "mediapipe_hands",
+                "status": "failed",
+                "artifact_path": "rec/analysis/mediapipe-hands.json",
+                "error": "MediaPipe crashed",
+            },
+            {
+                "kind": "yolo_objects",
+                "status": "succeeded",
+                "artifact_path": "rec/analysis/yolo-detections.json",
+                "error": None,
+            },
+            {
+                "kind": "sam_segments",
+                "status": "succeeded",
+                "artifact_path": "rec/analysis/sam-segments.json",
+                "error": None,
+            },
+            {
+                "kind": "temporal_actions",
+                "status": "succeeded",
+                "artifact_path": "rec/analysis/temporal-actions.json",
+                "error": None,
+            },
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="mediapipe_hands: MediaPipe crashed"):
+        poll_all_jobs(api, "rec", timeout_s=10)
+
+    assert api.downloaded == []
+
+
+class FakeResponse:
+    pass
+
+
+class FakeClient:
+    def __init__(self, api):
+        self.api = api
+
+    def get(self, *_args, **_kwargs):
+        return FakeResponse()
+
+
+class FakeConfig:
+    url = "https://example.supabase.co"
+
+
+class FakeApi:
+    config = FakeConfig()
+
+    def __init__(self, *, recording=None, jobs=None):
+        self.recording = recording or {}
+        self.jobs = jobs or []
+        self.client = FakeClient(self)
+        self.downloaded = []
+
+    def select_one(self, table, query):
+        assert table == "recordings"
+        assert "id=eq.rec" in query
+        return self.recording
+
+    def rest_headers(self):
+        return {}
+
+    def _json(self, _res):
+        return self.jobs
+
+    def download_bytes(self, bucket, path):
+        self.downloaded.append((bucket, path))
+        return b"{}"

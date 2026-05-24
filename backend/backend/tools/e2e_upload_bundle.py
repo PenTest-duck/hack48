@@ -118,6 +118,32 @@ def submit_recording(
     return res.json()
 
 
+def ensure_analysis_started(response: dict[str, Any]) -> None:
+    if response.get("analysis_started") is False:
+        error = response.get("analysis_error") or "analysis_started=false"
+        raise RuntimeError(f"Analysis did not start: {error}")
+
+
+def _valid_score_row(row: dict[str, Any]) -> bool:
+    return (
+        row.get("score") is not None
+        and row.get("success") is not None
+        and bool(row.get("summary"))
+    )
+
+
+def _gemini_job(api: SupabaseApi, recording_id: str) -> dict[str, Any] | None:
+    res = api.client.get(
+        f"{api.config.url}/rest/v1/recording_analysis_jobs"
+        f"?recording_id=eq.{recording_id}"
+        "&kind=eq.gemini_eval"
+        "&select=kind,status,artifact_path,error",
+        headers=api.rest_headers(),
+    )
+    rows = api._json(res) or []
+    return rows[0] if rows else None
+
+
 def poll_score(api: SupabaseApi, recording_id: str, timeout_s: int) -> dict[str, Any]:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -128,6 +154,13 @@ def poll_score(api: SupabaseApi, recording_id: str, timeout_s: int) -> dict[str,
             + "&select=id,is_scoring,summary,success,success_reasoning,score,score_reasoning,status",
         )
         if not row.get("is_scoring"):
+            if not _valid_score_row(row):
+                gemini_job = _gemini_job(api, recording_id)
+                raise RuntimeError(
+                    "Scoring finished without complete Gemini fields for "
+                    f"{recording_id}: row={json.dumps(row, sort_keys=True, default=str)} "
+                    f"gemini_job={json.dumps(gemini_job, sort_keys=True, default=str)}"
+                )
             return row
 
         print("score pending...")
@@ -152,6 +185,16 @@ def poll_all_jobs(
         )
         rows = api._json(res)
         if len(rows) == expected_jobs and all(row["status"] in terminal for row in rows):
+            failed_rows = [row for row in rows if row["status"] == "failed"]
+            if failed_rows:
+                summary = "; ".join(
+                    f"{row.get('kind')}: {row.get('error') or 'unknown error'}"
+                    for row in failed_rows
+                )
+                raise RuntimeError(
+                    f"Analysis jobs failed for {recording_id}: {summary}"
+                )
+
             for row in rows:
                 artifact_path = row.get("artifact_path")
                 if row["status"] == "succeeded" and artifact_path:
@@ -199,6 +242,10 @@ def main() -> None:
         )
         response = submit_recording(config, token, payload)
         print(json.dumps({"submit": response, "recording_id": recording_id}, indent=2))
+        try:
+            ensure_analysis_started(response)
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
 
         if args.wait in {"score", "all"}:
             score = poll_score(api, recording_id, args.timeout_s)
