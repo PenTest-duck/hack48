@@ -35,6 +35,7 @@ final class Recorder: NSObject, ObservableObject {
     // Video writer (set up lazily on the first frame, once we know its size).
     private var assetWriter: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
+    private var audioInput: AVAssetWriterInput?
     private var pixelAdaptor: AVAssetWriterInputPixelBufferAdaptor?
     private var writerStarted = false
     private var videoCodec = "h264"
@@ -93,6 +94,7 @@ final class Recorder: NSObject, ObservableObject {
     func configureIfNeeded() {
         guard phase == .idle else { return }
         location.requestPermission()
+        AVAudioApplication.requestRecordPermission { _ in }   // mic, for audio + transcript
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             setPhase(.ready)
@@ -126,6 +128,7 @@ final class Recorder: NSObject, ObservableObject {
         if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
             config.frameSemantics.insert(.sceneDepth) // LiDAR depth (Pro devices)
         }
+        config.providesAudioData = true   // mic audio → video track + transcript
         session.run(config)
     }
 
@@ -193,6 +196,7 @@ final class Recorder: NSObject, ObservableObject {
                 return
             }
             input.markAsFinished()
+            self.audioInput?.markAsFinished()
             writer.finishWriting { [weak self] in
                 self?.completeRecording()
             }
@@ -202,7 +206,7 @@ final class Recorder: NSObject, ObservableObject {
     // MARK: - Finalize
 
     private func completeRecording() {
-        assetWriter = nil; videoInput = nil; pixelAdaptor = nil; writerStarted = false
+        assetWriter = nil; videoInput = nil; audioInput = nil; pixelAdaptor = nil; writerStarted = false
         guard let bundle else { setPhase(.ready); return }
 
         let durationMs = Int((lastFrameTime - (firstFrameTime ?? lastFrameTime)) * 1000)
@@ -211,10 +215,12 @@ final class Recorder: NSObject, ObservableObject {
                                   lon: $0.coordinate.longitude,
                                   accuracyM: $0.horizontalAccuracy)
         }
-        // Only list files that actually got written.
-        let streams = bundle.streamFilenames.filter {
+        // Only list files that actually got written — plus transcript.json, which
+        // Whisper produces asynchronously below (the uploader skips it if absent).
+        var streams = bundle.streamFilenames.filter {
             FileManager.default.fileExists(atPath: bundle.folderURL.appendingPathComponent($0).path)
         }
+        if !streams.contains("transcript.json") { streams.append("transcript.json") }
         let metadata = RecordingMetadata(
             recordingId: bundle.id.uuidString,
             bountyId: bountyId,
@@ -238,11 +244,22 @@ final class Recorder: NSObject, ObservableObject {
         let size = RecordingStore.directorySize(bundle.folderURL)
         let id = bundle.id
         let createdAt = startWall
-        // Re-read streams now that metadata.json exists.
-        let finalStreams = bundle.streamFilenames.filter {
+        let videoURL = bundle.videoURL
+        let transcriptURL = bundle.transcriptURL
+        // Re-read streams now that metadata.json exists (+ transcript.json, async).
+        var finalStreams = bundle.streamFilenames.filter {
             FileManager.default.fileExists(atPath: bundle.folderURL.appendingPathComponent($0).path)
         }
+        if !finalStreams.contains("transcript.json") { finalStreams.append("transcript.json") }
         self.bundle = nil
+
+        // On-device Whisper transcription — runs now that the camera is off, so no
+        // camera/GPU conflict. Writes transcript.json when done (first run downloads
+        // the model, so it can take a bit).
+        Task.detached(priority: .utility) {
+            let (segments, status) = await WhisperTranscriber.transcribe(videoURL: videoURL)
+            try? RecordingStore.writeTranscript(segments, status: status, to: transcriptURL)
+        }
 
         DispatchQueue.main.async {
             let recording = Recording(
@@ -285,11 +302,25 @@ final class Recorder: NSObject, ObservableObject {
 
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
         if writer.canAdd(input) { writer.add(input) }
+
+        // Audio track (AAC) so playback has sound. The writer transcodes ARKit's
+        // mic audio to AAC.
+        let audioSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVNumberOfChannelsKey: 1,
+            AVSampleRateKey: 44_100.0,
+            AVEncoderBitRateKey: 64_000,
+        ]
+        let audio = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
+        audio.expectsMediaDataInRealTime = true
+        if writer.canAdd(audio) { writer.add(audio) }
+
         writer.startWriting()
         writer.startSession(atSourceTime: CMTime(seconds: startTime, preferredTimescale: 1_000_000))
 
         assetWriter = writer
         videoInput = input
+        audioInput = audio
         pixelAdaptor = adaptor
         firstFrameTime = startTime
         writerStarted = (writer.status == .writing)
@@ -468,6 +499,14 @@ extension Recorder: ARSessionDelegate {
             lastDepthWrite = t
             appendDepth(sceneDepth.depthMap, at: t, to: bundle.depthURL)
         }
+    }
+
+    /// ARKit's captured microphone audio → the video's audio track (Whisper later
+    /// transcribes that audio post-recording).
+    func session(_ session: ARSession, didOutputAudioSampleBuffer audioSampleBuffer: CMSampleBuffer) {
+        guard isRecording, writerStarted,
+              let audioInput, audioInput.isReadyForMoreMediaData else { return }
+        audioInput.append(audioSampleBuffer)
     }
 
     func session(_ session: ARSession, didFailWithError error: Error) {

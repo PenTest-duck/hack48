@@ -85,6 +85,28 @@ enum LabTasksService {
         return rows.first?.reference_path ?? nil
     }
 
+    /// Reference path + AI-generated brief for a task, in one query.
+    struct ReferenceInfo: Decodable { let reference_path: String?; let reference_brief: String? }
+    static func referenceInfo(taskId: String) async throws -> ReferenceInfo? {
+        let rows: [ReferenceInfo] = try await Backend.supabase
+            .from("tasks")
+            .select("reference_path,reference_brief")
+            .eq("id", value: taskId)
+            .execute()
+            .value
+        return rows.first
+    }
+
+    /// Store the AI-generated text brief describing the reference.
+    static func setReferenceBrief(taskId: String, brief: String) async throws {
+        struct Patch: Encodable { let reference_brief: String }
+        try await Backend.supabase
+            .from("tasks")
+            .update(Patch(reference_brief: brief))
+            .eq("id", value: taskId)
+            .execute()
+    }
+
     /// Signed URL to a task's reference video (private bucket), if a reference exists.
     static func signedReferenceURL(taskId: String) async throws -> URL? {
         guard let path = try await referencePath(taskId: taskId), !path.isEmpty else { return nil }

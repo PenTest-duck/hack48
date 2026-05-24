@@ -9,9 +9,10 @@ struct LiveCoachView: View {
     @StateObject private var gemini = GeminiLiveClient()
     @State private var showLog = false
 
-    /// Optional task brief so the coach knows what "good" looks like.
+    /// Optional task context so the coach knows what "good" looks like.
     var taskTitle: String? = nil
     var taskDescription: String? = nil
+    var brief: String? = nil          // lab's AI-generated reference brief
 
     // Poke for a tip frequently; the client's idle-guard prevents overlapping
     // requests, so the real cadence is "as soon as the last tip finished".
@@ -37,22 +38,22 @@ struct LiveCoachView: View {
             }
         }
         .onAppear {
+            AppOrientation.lock(.landscapeRight)   // coaching is for landscape recording
             recorder.onCoachingFrame = { data in
                 Task { @MainActor in gemini.sendFrame(data) }
             }
             recorder.configureIfNeeded()
-            gemini.connect(systemInstruction: coachPrompt)
+            gemini.connect(systemInstruction:
+                CoachPrompt.build(taskTitle: taskTitle, taskDescription: taskDescription, brief: brief))
         }
         .onDisappear {
             recorder.onCoachingFrame = nil
             recorder.pause()
             gemini.disconnect()
+            AppOrientation.lock(.portrait)
         }
         .onReceive(askTimer) { _ in
-            if gemini.isReady {
-                gemini.requestTip("Give ONE short imperative tip (max 8 words) only if the framing, "
-                    + "lighting, distance or steadiness needs fixing. Otherwise reply exactly \"Looks good\".")
-            }
+            if gemini.isReady { gemini.requestTip("Give ONE short coaching tip now.") }
         }
     }
 
@@ -66,6 +67,18 @@ struct LiveCoachView: View {
             }
             .padding(.horizontal, 12)
             .padding(.top, 8)
+
+            if let taskTitle, !taskTitle.isEmpty {
+                HStack {
+                    Text("\(taskTitle) · \(brief != nil ? "reference brief ✓" : "no brief")")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(.black.opacity(0.5), in: Capsule())
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+            }
 
             if showLog { logPanel }
 
@@ -133,18 +146,5 @@ struct LiveCoachView: View {
             Text("Camera access needed").font(.headline)
         }
         .foregroundStyle(.white)
-    }
-
-    private var coachPrompt: String {
-        var brief = "You are a real-time camera coach for someone recording a short first-person "
-            + "video for a robotics training dataset. They should keep the subject and their hands "
-            + "centered and well-lit, hold the camera steady, and stay at a natural working distance."
-        if let t = taskTitle, !t.isEmpty {
-            brief += " The task is: \"\(t)\"."
-            if let d = taskDescription, !d.isEmpty { brief += " Details: \(d)" }
-        }
-        brief += " Keep every reply extremely short (max 8 words), imperative, and only about what to "
-            + "fix. Never explain or add pleasantries."
-        return brief
     }
 }

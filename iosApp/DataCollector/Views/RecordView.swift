@@ -12,6 +12,8 @@ struct RecordView: View {
     @StateObject private var recorder = Recorder()
     var job: Job? = nil
     var referenceTaskId: String? = nil   // when set, this records a task's reference example
+    var referenceTaskTitle: String? = nil        // for generating the reference brief
+    var referenceTaskDescription: String? = nil
     var profile: CoachingProfile? = nil  // task-specific coaching targets (from the lab's reference)
     var profileDebug: String? = nil      // diagnostic of how the profile loaded
 
@@ -203,6 +205,15 @@ struct RecordView: View {
                     folderName: folderName, streams: streams, taskId: taskId
                 )
                 try await LabTasksService.setReferencePath(taskId: taskId, path: path)
+
+                // Turn the reference video into a text brief for collectors (best-effort;
+                // do it before deleting the local bundle).
+                if let brief = await GeminiVisionService.describeReference(
+                    videoURL: folder.appendingPathComponent("video.mp4"),
+                    taskTitle: referenceTaskTitle, taskDescription: referenceTaskDescription) {
+                    try? await LabTasksService.setReferenceBrief(taskId: taskId, brief: brief)
+                }
+
                 await MainActor.run {
                     RecordingStore.deleteBundle(folderName: folderName)   // uploaded; no local copy needed
                     refUploading = false

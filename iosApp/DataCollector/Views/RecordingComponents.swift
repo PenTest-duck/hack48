@@ -76,7 +76,6 @@ final class LoopingPlayerUIView: UIView {
         looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
         playerLayer.player = player
         playerLayer.videoGravity = .resizeAspect
-        player.isMuted = true
         player.play()
     }
 

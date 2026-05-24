@@ -23,6 +23,10 @@ final class GeminiLiveClient: ObservableObject {
     private var isOpen = false
     private var awaitingSince: Date?  // set when a tip is requested, cleared on turnComplete
     private var frameInFlight = false // drop frames while a send is still pending
+    private var pendingSystemInstruction: String?   // sent once the socket opens
+    private let wsDelegate = WSDelegate()
+
+    init() { wsDelegate.client = self }
 
     // MARK: - Lifecycle
 
@@ -41,15 +45,37 @@ final class GeminiLiveClient: ObservableObject {
         guard let url = URL(string: "wss://\(host)\(path)?key=\(key)") else {
             status = .error("Bad WebSocket URL"); return
         }
-        let session = URLSession(configuration: .default)
+        pendingSystemInstruction = systemInstruction
+        let session = URLSession(configuration: .default, delegate: wsDelegate, delegateQueue: nil)
         let socket = session.webSocketTask(with: url)
         self.session = session
         self.socket = socket
         isOpen = true
         socket.resume()
         addLog("connecting…")
-        receiveLoop()
-        sendSetup(systemInstruction: systemInstruction)
+        // receiveLoop + setup start once the socket actually opens (see socketDidOpen).
+    }
+
+    // MARK: - Connection events (called by WSDelegate)
+
+    func socketDidOpen() {
+        addLog("ws open")
+        startReceiving()
+        if let si = pendingSystemInstruction {
+            sendSetup(systemInstruction: si)
+            pendingSystemInstruction = nil
+        }
+    }
+
+    func socketDidClose(code: Int, reason: String) {
+        addLog("ws closed code=\(code)\(reason.isEmpty ? "" : " reason=\(reason)")")
+        if isOpen { status = .error("closed (code \(code))\(reason.isEmpty ? "" : ": \(reason)")") }
+    }
+
+    func taskDidComplete(status code: Int?, errorText: String?) {
+        if let code { addLog("http \(code)") }
+        if let errorText { addLog("task error: \(errorText)") }
+        if isOpen, let code, code >= 400 { status = .error("handshake HTTP \(code)") }
     }
 
     func disconnect() {
@@ -68,11 +94,14 @@ final class GeminiLiveClient: ObservableObject {
     // MARK: - Sending
 
     private func sendSetup(systemInstruction: String) {
+        // The available Live models only output AUDIO, so we request AUDIO and turn
+        // on output transcription to get the spoken tip back as text (audio ignored).
         let setup: [String: Any] = [
             "setup": [
                 "model": SupabaseConfig.geminiLiveModel,
-                "generationConfig": ["responseModalities": ["TEXT"]],
+                "generationConfig": ["responseModalities": ["AUDIO"]],
                 "systemInstruction": ["parts": [["text": systemInstruction]]],
+                "outputAudioTranscription": [String: String](),
             ]
         ]
         send(setup, label: "setup")
@@ -122,60 +151,122 @@ final class GeminiLiveClient: ObservableObject {
 
     // MARK: - Receiving
 
-    private func receiveLoop() {
-        socket?.receive { [weak self] result in
-            Task { @MainActor in
-                guard let self else { return }
-                switch result {
-                case .failure(let error):
-                    self.addLog("recv error: \(error.localizedDescription)")
-                    self.awaitingSince = nil
-                    if self.isOpen { self.status = .error(error.localizedDescription) }
-                case .success(let message):
-                    switch message {
-                    case .data(let data):   self.handle(data)
-                    case .string(let text): self.handle(Data(text.utf8))
-                    @unknown default:       break
-                    }
-                    if self.isOpen { self.receiveLoop() }
+    /// Small, Sendable result of parsing one server message off the main thread.
+    private struct Parsed: Sendable {
+        var setupComplete = false
+        var text = ""
+        var turnComplete = false
+        var note: String?
+        /// Worth hopping to main for? Empty audio chunks are not.
+        var hasContent: Bool { setupComplete || !text.isEmpty || turnComplete || note != nil }
+    }
+
+    /// Parse a server message OFF the main actor. AUDIO output streams a flood of
+    /// large messages, so doing this JSON work on main would stall the camera/UI.
+    nonisolated private static func parse(_ data: Data) -> Parsed {
+        var out = Parsed()
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            out.note = "← non-JSON (\(data.count)b)"
+            return out
+        }
+        if obj["setupComplete"] != nil { out.setupComplete = true; return out }
+        if let server = obj["serverContent"] as? [String: Any] {
+            if let trans = server["outputTranscription"] as? [String: Any],
+               let text = trans["text"] as? String { out.text += text }
+            if let modelTurn = server["modelTurn"] as? [String: Any],
+               let parts = modelTurn["parts"] as? [[String: Any]] {
+                for part in parts { if let text = part["text"] as? String { out.text += text } }
+            }
+            if (server["turnComplete"] as? Bool) == true { out.turnComplete = true }
+            return out
+        }
+        out.note = "← \(String(data: data, encoding: .utf8)?.prefix(180) ?? "?")"
+        return out
+    }
+
+    private func startReceiving() {
+        guard let socket else { return }
+        receiveNext(on: socket)
+    }
+
+    /// Runs entirely on URLSession's background queue and re-arms itself there, so a
+    /// flood of (audio) messages never saturates the main actor — which during
+    /// recording is busy with the camera pipeline. Only meaningful updates hop to main.
+    nonisolated private func receiveNext(on socket: URLSessionWebSocketTask) {
+        socket.receive { [weak self] result in
+            switch result {
+            case .failure(let error):
+                let desc = error.localizedDescription
+                Task { @MainActor in self?.handleRecvError(desc) }   // stop (no re-arm)
+            case .success(let message):
+                let data: Data
+                switch message {
+                case .data(let d):   data = d
+                case .string(let s): data = Data(s.utf8)
+                @unknown default:    data = Data()
                 }
+                let parsed = GeminiLiveClient.parse(data)
+                if parsed.hasContent { Task { @MainActor in self?.apply(parsed) } }
+                self?.receiveNext(on: socket)   // re-arm on this background queue
             }
         }
     }
 
-    private func handle(_ data: Data) {
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            addLog("← non-JSON (\(data.count)b)")
-            return
-        }
-        if obj["setupComplete"] != nil {
+    private func handleRecvError(_ desc: String) {
+        addLog("recv error: \(desc)")
+        awaitingSince = nil
+        if isOpen { status = .error(desc) }
+    }
+
+    private func apply(_ p: Parsed) {
+        if p.setupComplete {
             status = .ready
             addLog("ready")
             return
         }
-        if let server = obj["serverContent"] as? [String: Any] {
-            if let modelTurn = server["modelTurn"] as? [String: Any],
-               let parts = modelTurn["parts"] as? [[String: Any]] {
-                for part in parts {
-                    if let text = part["text"] as? String { partial += text }
-                }
-                let streaming = partial.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !streaming.isEmpty { latestTip = streaming }   // render tokens as they arrive
-            }
-            if (server["turnComplete"] as? Bool) == true {
-                let tip = partial.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !tip.isEmpty { addLog("tip: \(tip)") }
-                partial = ""
-                awaitingSince = nil          // ready for the next nudge
-            }
-            return
+        if !p.text.isEmpty {
+            partial += p.text
+            let s = partial.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !s.isEmpty { latestTip = s }   // render as it arrives
         }
-        // Surface anything else (errors, goAway, usage) so we can debug the schema.
-        addLog("← \(String(data: data, encoding: .utf8)?.prefix(180) ?? "?")")
+        if p.turnComplete {
+            let tip = partial.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !tip.isEmpty { addLog("tip: \(tip)") }
+            partial = ""
+            awaitingSince = nil
+        }
+        if let note = p.note { addLog(note) }
     }
 
     private func addLog(_ line: String) {
         log.append(line)
         if log.count > 50 { log.removeFirst(log.count - 50) }
+    }
+}
+
+/// Captures WebSocket lifecycle so handshake failures surface a real reason
+/// (HTTP status, close code) instead of a bare "socket is not connected".
+private final class WSDelegate: NSObject, URLSessionWebSocketDelegate {
+    weak var client: GeminiLiveClient?
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
+                    didOpenWithProtocol proto: String?) {
+        let c = client
+        Task { @MainActor in c?.socketDidOpen() }
+    }
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
+                    didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        let c = client
+        let code = closeCode.rawValue
+        let text = reason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        Task { @MainActor in c?.socketDidClose(code: code, reason: text) }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        let c = client
+        let code = (task.response as? HTTPURLResponse)?.statusCode
+        let desc = error?.localizedDescription
+        Task { @MainActor in c?.taskDidComplete(status: code, errorText: desc) }
     }
 }
