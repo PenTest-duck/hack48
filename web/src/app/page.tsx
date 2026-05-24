@@ -87,13 +87,13 @@ export default function Home() {
           </div>
 
           <nav className="hidden md:flex items-center gap-7 text-sm text-[var(--foreground-secondary)]">
-            <Link href="#" className="transition-colors hover:text-white">Dashboard</Link>
-            <Link href="#" className="transition-colors hover:text-white">New Task</Link>
+            <Link href="/lab/dashboard" className="transition-colors hover:text-white">Dashboard</Link>
+            <Link href="/lab/tasks/new" className="transition-colors hover:text-white">New Task</Link>
           </nav>
 
           <div className="ml-auto flex items-center gap-5 text-sm text-[var(--foreground-secondary)]">
-            <span>john</span>
-            <Link href="#" className="transition-colors hover:text-white">Sign out</Link>
+            <Link href="/login" className="transition-colors hover:text-white">Sign in</Link>
+            <Link href="/signup" className="btn-lab rounded-lg px-4 py-2 text-sm font-medium transition-colors hover:bg-[#4b6af0]">Get started</Link>
           </div>
         </div>
       </header>
@@ -123,9 +123,9 @@ export default function Home() {
               <Link href="/signup" className="btn-collector rounded-[10px] px-5.5 py-3.5 text-[15px] font-semibold inline-flex items-center gap-2 transition-colors hover:bg-[#38b754]">
                 Start collecting <span>→</span>
               </Link>
-              <Link href="#" className="bg-transparent border border-[rgba(255,255,255,0.16)] rounded-[10px] px-5.5 py-3.5 text-[15px] font-medium inline-flex items-center gap-2 transition-colors hover:bg-[rgba(255,255,255,0.04)]">
+              <a href="#stats" className="bg-transparent border border-[rgba(255,255,255,0.16)] rounded-[10px] px-5.5 py-3.5 text-[15px] font-medium inline-flex items-center gap-2 transition-colors hover:bg-[rgba(255,255,255,0.04)]">
                 How it works
-              </Link>
+              </a>
             </div>
           </section>
 
@@ -146,7 +146,7 @@ export default function Home() {
           </aside>
         </div>
 
-        <section className="mt-24 border-t border-[var(--border)] pt-14">
+        <section id="stats" className="mt-24 border-t border-[var(--border)] pt-14">
           <div className="flex items-baseline justify-between gap-6 mb-9">
             <h2 className="text-[22px] font-bold tracking-[-0.01em] text-white">
               The data bottleneck
