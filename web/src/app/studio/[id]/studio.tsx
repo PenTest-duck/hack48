@@ -2431,6 +2431,18 @@ function Timeline({
             </Lane>
           )}
 
+          {artifacts.transcript && artifacts.transcript.length > 0 ? (
+            <Lane label="transcript" color="#e6b800">
+              {artifacts.transcript.map((seg, i) => (
+                <TranscriptSegBlock key={i} seg={seg} durationS={durationS} />
+              ))}
+            </Lane>
+          ) : (
+            <Lane label="transcript" color="#e6b800" muted>
+              <span className="lane__empty">no transcript</span>
+            </Lane>
+          )}
+
           {detectionRibbons && detectionRibbons.length > 0 ? (
             <Lane label="detections" color="#c2e02b" tall>
               {detectionRibbons.map((ribbon, ri) => (
@@ -2481,18 +2493,6 @@ function Timeline({
           {omegaLane && (
             <Lane label="ω · |rate|" color="#5edcc6">
               <SignalLine series={omegaLane} color="#5edcc6" />
-            </Lane>
-          )}
-
-          {artifacts.transcript && artifacts.transcript.length > 0 ? (
-            <Lane label="transcript" color="#e6b800">
-              {artifacts.transcript.map((seg, i) => (
-                <TranscriptSegBlock key={i} seg={seg} durationS={durationS} />
-              ))}
-            </Lane>
-          ) : (
-            <Lane label="transcript" color="#e6b800" muted>
-              <span className="lane__empty">no transcript</span>
             </Lane>
           )}
 
