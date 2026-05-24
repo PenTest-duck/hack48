@@ -15,6 +15,8 @@ type Submission = {
   signedUrl: string | null
 }
 
+type IndexStatus = 'none' | 'indexing' | 'indexed' | 'error'
+
 type Props = {
   taskId: string
   initialSubmissions: Submission[]
@@ -24,6 +26,13 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
   const [submissions, setSubmissions] = useState<Submission[]>(initialSubmissions)
   const [newCount, setNewCount] = useState(0)
   const [isPending, startTransition] = useTransition()
+  const [indexStatuses, setIndexStatuses] = useState<Record<string, IndexStatus>>(() => {
+    const init: Record<string, IndexStatus> = {}
+    for (const s of initialSubmissions) {
+      init[s.id] = s.metadata?.['twelvelabs_video_id'] ? 'indexed' : 'none'
+    }
+    return init
+  })
 
   useEffect(() => {
     const supabase = createClient()
@@ -50,6 +59,7 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
           }
 
           setSubmissions(prev => [newSubmission, ...prev])
+          setIndexStatuses(prev => ({ ...prev, [newSubmission.id]: 'none' }))
           setNewCount(n => n + 1)
           triggerToast('New submission received!')
         }
@@ -60,6 +70,37 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
       supabase.removeChannel(channel)
     }
   }, [taskId])
+
+  async function handleIndex(submissionId: string, force = false) {
+    setIndexStatuses(prev => ({ ...prev, [submissionId]: 'indexing' }))
+    try {
+      const res = await fetch('/api/index-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId, force }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Indexing failed')
+      setIndexStatuses(prev => ({ ...prev, [submissionId]: 'indexed' }))
+      if (data.videoId) {
+        setSubmissions(prev =>
+          prev.map(s =>
+            s.id === submissionId
+              ? { ...s, metadata: { ...(s.metadata ?? {}), twelvelabs_video_id: data.videoId } }
+              : s
+          )
+        )
+      }
+      if (data.alreadyIndexed) {
+        triggerToast('Already indexed for search')
+      } else {
+        triggerToast('Video indexed — searchable now')
+      }
+    } catch (err) {
+      setIndexStatuses(prev => ({ ...prev, [submissionId]: 'error' }))
+      triggerToast(`Index error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
 
   function handleApprove(submissionId: string) {
     startTransition(async () => {
@@ -113,6 +154,8 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
             submission={submission}
             onApprove={() => handleApprove(submission.id)}
             onReject={() => handleReject(submission.id)}
+            onIndex={(force) => handleIndex(submission.id, force)}
+            indexStatus={indexStatuses[submission.id] ?? 'none'}
             isPending={isPending}
           />
         ))}
@@ -125,11 +168,15 @@ function SubmissionCard({
   submission,
   onApprove,
   onReject,
+  onIndex,
+  indexStatus,
   isPending,
 }: {
   submission: Submission
   onApprove: () => void
   onReject: () => void
+  onIndex: (force?: boolean) => void
+  indexStatus: IndexStatus
   isPending: boolean
 }) {
   const meta = submission.metadata as {
@@ -198,24 +245,62 @@ function SubmissionCard({
           </div>
 
           {/* Actions */}
-          {submission.status === 'pending' && (
-            <div className="flex gap-2 shrink-0">
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            {submission.status === 'pending' && (
+              <div className="flex gap-2">
+                <button
+                  onClick={onReject}
+                  disabled={isPending}
+                  className="btn-neutral rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
+                >
+                  Reject
+                </button>
+                <button
+                  onClick={onApprove}
+                  disabled={isPending}
+                  className="btn-lab rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
+                >
+                  Approve
+                </button>
+              </div>
+            )}
+            {/* Index for TwelveLabs search */}
+            {indexStatus === 'indexed' ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs px-2 py-1 rounded-full bg-[rgba(59,91,219,0.16)] text-[#aebeff] font-medium">
+                  Indexed for search
+                </span>
+                <button
+                  onClick={() => onIndex(true)}
+                  className="text-[10px] text-[var(--foreground-secondary)] hover:text-white transition-colors"
+                  title="Force re-index"
+                >
+                  ↻
+                </button>
+              </div>
+            ) : indexStatus === 'indexing' ? (
+              <span className="flex items-center gap-1.5 text-xs text-[var(--foreground-secondary)]">
+                <span className="h-2.5 w-2.5 rounded-full border-2 border-[var(--foreground-secondary)]/30 border-t-[var(--foreground-secondary)] animate-spin" />
+                Indexing…
+              </span>
+            ) : indexStatus === 'error' ? (
               <button
-                onClick={onReject}
-                disabled={isPending}
-                className="btn-neutral rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
+                onClick={() => onIndex()}
+                className="text-xs px-2 py-1 rounded-full bg-[rgba(210,100,100,0.16)] text-[#f3a8a8] hover:bg-[rgba(210,100,100,0.24)] transition-colors"
               >
-                Reject
+                Retry index
               </button>
+            ) : (
               <button
-                onClick={onApprove}
-                disabled={isPending}
-                className="btn-lab rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
+                onClick={() => onIndex()}
+                disabled={!submission.signedUrl}
+                className="text-xs px-2 py-1 rounded-full btn-neutral transition-colors disabled:opacity-40"
+                title={submission.signedUrl ? 'Index this video in TwelveLabs for AI search' : 'No video URL available'}
               >
-                Approve
+                Index for Search
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
