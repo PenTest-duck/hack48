@@ -208,7 +208,7 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
         )}
       </div>
 
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {submissions.map(submission => (
           <SubmissionCard
             key={submission.id}
@@ -271,8 +271,8 @@ function SubmissionCard({
   const recording = submission.recording
 
   return (
-    <div className="surface-panel overflow-hidden">
-      {/* Video player → click to open studio */}
+    <div className="surface-panel overflow-hidden flex flex-col">
+      {/* Video thumbnail */}
       {submission.signedUrl ? (
         recording?.id ? (
           <Link
@@ -285,7 +285,7 @@ function SubmissionCard({
               muted
               playsInline
               preload="metadata"
-              className="w-full max-h-64 bg-black pointer-events-none"
+              className="w-full aspect-video bg-black object-contain pointer-events-none"
             />
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
               <span className="rounded border border-white/30 bg-black/60 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-white">
@@ -297,172 +297,119 @@ function SubmissionCard({
           <video
             src={submission.signedUrl}
             controls
-            className="w-full max-h-64 bg-black"
+            className="w-full aspect-video bg-black object-contain"
             preload="metadata"
           />
         )
       ) : (
-        <div className="flex h-40 w-full items-center justify-center bg-[var(--surface-muted)]">
-          <span className="text-sm text-[var(--foreground-secondary)]">Video preview unavailable</span>
+        <div className="w-full aspect-video bg-[var(--surface-muted)] flex flex-col items-center justify-center gap-1">
+          <span className="text-2xl">🎥</span>
+          <span className="text-xs text-[var(--foreground-secondary)]">Video preview unavailable</span>
         </div>
       )}
 
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusStyles[submission.status]}`}>
-                {submission.status}
-              </span>
-              <span className="text-xs text-[var(--foreground-secondary)]">
-                {new Date(submission.created_at).toLocaleString()}
-              </span>
-            </div>
-
-            {/* Metadata */}
-            {meta && (
-              <div className="flex flex-wrap gap-3 mt-2">
-                {meta.duration_s && (
-                  <span className="text-xs text-[var(--foreground-secondary)]">{meta.duration_s}s</span>
-                )}
-                {meta.file_size_bytes && (
-                  <span className="text-xs text-[var(--foreground-secondary)]">
-                    {(meta.file_size_bytes / 1024 / 1024).toFixed(1)} MB
-                  </span>
-                )}
-                {meta.device_model && (
-                  <span className="text-xs text-[var(--foreground-secondary)]">{meta.device_model}</span>
-                )}
-                {meta.gps_lat && meta.gps_lng && (
-                  <span className="text-xs text-[var(--foreground-secondary)]">
-                    {meta.gps_lat.toFixed(4)}, {meta.gps_lng.toFixed(4)}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="flex flex-col items-end gap-2 shrink-0">
-            {submission.status === 'pending' && (
-              <div className="flex gap-2">
-                <button
-                  onClick={onReject}
-                  disabled={isPending}
-                  className="btn-neutral rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
-                >
-                  Reject
-                </button>
-                <button
-                  onClick={onApprove}
-                  disabled={isPending}
-                  className="btn-lab rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
-                >
-                  Approve
-                </button>
-              </div>
-            )}
-            {/* Index for TwelveLabs search */}
-            {indexStatus === 'indexed' ? (
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs px-2 py-1 rounded-full bg-[rgba(59,91,219,0.16)] text-[#aebeff] font-medium">
-                  Indexed for search
-                </span>
-                <button
-                  onClick={() => onIndex(true)}
-                  className="text-[10px] text-[var(--foreground-secondary)] hover:text-white transition-colors"
-                  title="Force re-index"
-                >
-                  ↻
-                </button>
-              </div>
-            ) : indexStatus === 'indexing' ? (
-              <span className="flex items-center gap-1.5 text-xs text-[var(--foreground-secondary)]">
-                <span className="h-2.5 w-2.5 rounded-full border-2 border-[var(--foreground-secondary)]/30 border-t-[var(--foreground-secondary)] animate-spin" />
-                Indexing…
-              </span>
-            ) : indexStatus === 'error' ? (
-              <button
-                onClick={() => onIndex()}
-                className="text-xs px-2 py-1 rounded-full bg-[rgba(210,100,100,0.16)] text-[#f3a8a8] hover:bg-[rgba(210,100,100,0.24)] transition-colors"
-              >
-                Retry index
-              </button>
-            ) : (
-              <button
-                onClick={() => onIndex()}
-                disabled={!submission.signedUrl}
-                className="text-xs px-2 py-1 rounded-full btn-neutral transition-colors disabled:opacity-40"
-                title={submission.signedUrl ? 'Index this video in TwelveLabs for AI search' : 'No video URL available'}
-              >
-                Index for Search
-              </button>
-            )}
-          </div>
+      <div className="p-3 flex flex-col gap-2 flex-1">
+        {/* Status + date */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusStyles[submission.status]}`}>
+            {submission.status}
+          </span>
+          <span className="text-[10px] text-[var(--foreground-secondary)]">
+            {new Date(submission.created_at).toLocaleDateString()}
+          </span>
         </div>
 
-        {recording && (
-          <div className="mt-4 border-t border-[var(--border)] pt-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--foreground-secondary)]">
-                Analysis
-              </span>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${RECORDING_STATUS_STYLES[recording.status]}`}>
-                {recording.status}
-              </span>
-              {recording.is_scoring ? (
-                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-[rgba(216,163,71,0.16)] text-[#f0cb7c]">
-                  Scoring
-                </span>
-              ) : recording.score !== null ? (
-                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-[rgba(47,158,68,0.16)] text-[#99ddaa]">
-                  Score ready
-                </span>
-              ) : (
-                <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-xs text-[var(--foreground-secondary)]">
-                  Not scored
-                </span>
-              )}
-              <Link
-                href={`/studio/${recording.id}`}
-                className="ml-auto text-xs text-[#aebeff] hover:text-white transition-colors"
-              >
-                Open in studio →
-              </Link>
-            </div>
-
-            {recording.score !== null && (
-              <div className="mt-3 grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
-                <div className="flex flex-col items-start rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
-                  <span className="text-xs uppercase tracking-[0.14em] text-[var(--foreground-secondary)]">Score</span>
-                  <span className="text-2xl font-black tracking-[-0.03em] text-white">{recording.score}/10</span>
-                </div>
-                <div className="space-y-2 text-sm">
-                  {recording.summary && (
-                    <p className="text-white">{recording.summary}</p>
-                  )}
-                  {recording.score_reasoning && (
-                    <p className="text-[var(--foreground-secondary)]">{recording.score_reasoning}</p>
-                  )}
-                </div>
-              </div>
+        {/* Quick metadata */}
+        {meta && (
+          <div className="flex flex-wrap gap-2">
+            {meta.duration_s && (
+              <span className="text-[10px] text-[var(--foreground-secondary)]">{meta.duration_s}s</span>
             )}
-
-            {submission.analysisJobs.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {submission.analysisJobs.map((job) => (
-                  <span
-                    key={`${job.recording_id}-${job.kind}`}
-                    title={job.error ?? job.artifact_path ?? undefined}
-                    className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${JOB_STATUS_STYLES[job.status]}`}
-                  >
-                    {job.kind}: {job.status}
-                  </span>
-                ))}
-              </div>
+            {meta.file_size_bytes && (
+              <span className="text-[10px] text-[var(--foreground-secondary)]">
+                {(meta.file_size_bytes / 1024 / 1024).toFixed(1)} MB
+              </span>
+            )}
+            {meta.device_model && (
+              <span className="text-[10px] text-[var(--foreground-secondary)]">{meta.device_model}</span>
             )}
           </div>
         )}
+
+        {/* Analysis score if available */}
+        {recording?.score !== null && recording?.score !== undefined && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-white">{recording.score}/10</span>
+            {recording.summary && (
+              <span className="text-[10px] text-[var(--foreground-secondary)] truncate">{recording.summary}</span>
+            )}
+          </div>
+        )}
+
+        {/* Actions row */}
+        <div className="mt-auto flex items-center justify-between gap-2 flex-wrap">
+          {submission.status === 'pending' ? (
+            <div className="flex gap-1.5">
+              <button
+                onClick={onReject}
+                disabled={isPending}
+                className="btn-neutral rounded-lg px-2.5 py-1 text-[10px] transition-colors disabled:opacity-40"
+              >
+                Reject
+              </button>
+              <button
+                onClick={onApprove}
+                disabled={isPending}
+                className="btn-lab rounded-lg px-2.5 py-1 text-[10px] transition-colors disabled:opacity-40"
+              >
+                Approve
+              </button>
+            </div>
+          ) : recording?.id ? (
+            <Link
+              href={`/studio/${recording.id}`}
+              className="text-[10px] text-[#aebeff] hover:text-white transition-colors"
+            >
+              Open in studio →
+            </Link>
+          ) : <span />}
+
+          {/* Index status */}
+          {indexStatus === 'indexed' ? (
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[rgba(59,91,219,0.16)] text-[#aebeff] font-medium">
+                Indexed
+              </span>
+              <button
+                onClick={() => onIndex(true)}
+                className="text-[10px] text-[var(--foreground-secondary)] hover:text-white transition-colors"
+                title="Force re-index"
+              >
+                ↻
+              </button>
+            </div>
+          ) : indexStatus === 'indexing' ? (
+            <span className="flex items-center gap-1 text-[10px] text-[var(--foreground-secondary)]">
+              <span className="h-2 w-2 rounded-full border border-[var(--foreground-secondary)]/30 border-t-[var(--foreground-secondary)] animate-spin" />
+              Indexing…
+            </span>
+          ) : indexStatus === 'error' ? (
+            <button
+              onClick={() => onIndex()}
+              className="text-[10px] px-1.5 py-0.5 rounded-full bg-[rgba(210,100,100,0.16)] text-[#f3a8a8] hover:bg-[rgba(210,100,100,0.24)] transition-colors"
+            >
+              Retry
+            </button>
+          ) : (
+            <button
+              onClick={() => onIndex()}
+              disabled={!submission.signedUrl}
+              className="text-[10px] px-1.5 py-0.5 rounded-full btn-neutral transition-colors disabled:opacity-40"
+            >
+              Index
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
