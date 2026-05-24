@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import SubmissionsLive from './submissions-live'
+import SubmissionsLive, { type AnalysisJob, type RecordingAnalysis } from './submissions-live'
 
 export default async function LabTaskPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -23,13 +23,60 @@ export default async function LabTaskPage({ params }: { params: Promise<{ id: st
     .eq('task_id', id)
     .order('created_at', { ascending: false })
 
+  const submissionsList = rawSubmissions ?? []
+
+  const recordingIds = submissionsList
+    .map((s) => {
+      const meta = s.metadata as Record<string, unknown> | null
+      const recordingId = meta?.recording_id
+      return typeof recordingId === 'string' ? recordingId : null
+    })
+    .filter((value): value is string => Boolean(value))
+
+  const recordingById = new Map<string, RecordingAnalysis>()
+  const jobsByRecordingId = new Map<string, AnalysisJob[]>()
+
+  if (recordingIds.length > 0) {
+    const [recordingsResult, jobsResult] = await Promise.all([
+      supabase
+        .from('recordings')
+        .select(
+          'id, status, is_scoring, summary, success, success_reasoning, score, score_reasoning, detected_objects, analysis_artifacts'
+        )
+        .in('id', recordingIds),
+      supabase
+        .from('recording_analysis_jobs')
+        .select(
+          'recording_id, kind, status, artifact_path, summary, error, started_at, finished_at'
+        )
+        .in('recording_id', recordingIds),
+    ])
+
+    for (const recording of recordingsResult.data ?? []) {
+      recordingById.set(recording.id, recording as RecordingAnalysis)
+    }
+    for (const job of jobsResult.data ?? []) {
+      const typed = job as AnalysisJob
+      const list = jobsByRecordingId.get(typed.recording_id) ?? []
+      list.push(typed)
+      jobsByRecordingId.set(typed.recording_id, list)
+    }
+  }
+
   // Generate signed URLs server-side for initial load
   const submissions = await Promise.all(
-    (rawSubmissions ?? []).map(async (s) => {
+    submissionsList.map(async (s) => {
       const { data } = await supabase.storage
         .from('recordings')
         .createSignedUrl(s.storage_path.replace(/\/$/, '') + '/video.mp4', 3600)
-      return { ...s, signedUrl: data?.signedUrl ?? null }
+      const meta = s.metadata as Record<string, unknown> | null
+      const recordingId = typeof meta?.recording_id === 'string' ? meta.recording_id : null
+      return {
+        ...s,
+        signedUrl: data?.signedUrl ?? null,
+        recording: recordingId ? recordingById.get(recordingId) ?? null : null,
+        analysisJobs: recordingId ? jobsByRecordingId.get(recordingId) ?? [] : [],
+      }
     })
   )
 

@@ -29,6 +29,7 @@ export default function CreateTaskForm({
   const [quantity, setQuantity] = useState(24)
   const [deadline, setDeadline] = useState('')
   const [requirements, setRequirements] = useState<string[]>([])
+  const [objects, setObjects] = useState('')
   const [assets, setAssets] = useState<PreviewAsset[]>([])
 
   useEffect(() => {
@@ -210,6 +211,22 @@ export default function CreateTaskForm({
             {requirements.map((requirement) => (
               <input key={requirement} type="hidden" name="requirements" value={requirement} />
             ))}
+          </section>
+
+          <section className="surface-panel p-5 sm:p-6">
+            <div className="mb-4">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white">Objects to segment</h2>
+              <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
+                Comma-separated object tags for SAM. Human hand is always included automatically.
+              </p>
+            </div>
+            <input
+              name="objects"
+              value={objects}
+              onChange={(event) => setObjects(event.target.value)}
+              placeholder="cup, can, spoon"
+              className="input-dark text-sm"
+            />
           </section>
 
           <section className="surface-panel p-5 sm:p-6">

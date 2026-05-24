@@ -1,9 +1,43 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { approveSubmission, rejectSubmission } from '@/app/actions/submissions'
 import { triggerToast } from '@/components/toast'
+
+export type AnalysisJobKind =
+  | 'gemini_eval'
+  | 'mediapipe_hands'
+  | 'yolo_objects'
+  | 'sam_segments'
+  | 'temporal_actions'
+
+export type AnalysisJobStatus = 'pending' | 'running' | 'succeeded' | 'failed'
+
+export type AnalysisJob = {
+  recording_id: string
+  kind: AnalysisJobKind
+  status: AnalysisJobStatus
+  artifact_path: string | null
+  summary: Record<string, unknown> | null
+  error: string | null
+  started_at: string | null
+  finished_at: string | null
+}
+
+export type RecordingAnalysis = {
+  id: string
+  status: 'uploaded' | 'analyzing' | 'analyzed' | 'analysis_failed'
+  is_scoring: boolean
+  summary: string | null
+  success: boolean | null
+  success_reasoning: string | null
+  score: number | null
+  score_reasoning: string | null
+  detected_objects: unknown
+  analysis_artifacts: unknown
+}
 
 type Submission = {
   id: string
@@ -13,6 +47,8 @@ type Submission = {
   metadata: Record<string, unknown> | null
   created_at: string
   signedUrl: string | null
+  recording: RecordingAnalysis | null
+  analysisJobs: AnalysisJob[]
 }
 
 type Props = {
@@ -45,8 +81,10 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
             .createSignedUrl(payload.new.storage_path.replace(/\/$/, '') + '/video.mp4', 3600)
 
           const newSubmission: Submission = {
-            ...(payload.new as Submission),
+            ...(payload.new as Omit<Submission, 'signedUrl' | 'recording' | 'analysisJobs'>),
             signedUrl: data?.signedUrl ?? null,
+            recording: null,
+            analysisJobs: [],
           }
 
           setSubmissions(prev => [newSubmission, ...prev])
@@ -121,6 +159,20 @@ export default function SubmissionsLive({ taskId, initialSubmissions }: Props) {
   )
 }
 
+const RECORDING_STATUS_STYLES: Record<RecordingAnalysis['status'], string> = {
+  uploaded: 'bg-[rgba(115,120,131,0.18)] text-[#d3d7de]',
+  analyzing: 'bg-[rgba(216,163,71,0.16)] text-[#f0cb7c]',
+  analyzed: 'bg-[rgba(47,158,68,0.16)] text-[#99ddaa]',
+  analysis_failed: 'bg-[rgba(210,100,100,0.16)] text-[#f3a8a8]',
+}
+
+const JOB_STATUS_STYLES: Record<AnalysisJobStatus, string> = {
+  pending: 'border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground-secondary)]',
+  running: 'bg-[rgba(216,163,71,0.16)] text-[#f0cb7c]',
+  succeeded: 'bg-[rgba(47,158,68,0.16)] text-[#99ddaa]',
+  failed: 'bg-[rgba(210,100,100,0.16)] text-[#f3a8a8]',
+}
+
 function SubmissionCard({
   submission,
   onApprove,
@@ -145,6 +197,8 @@ function SubmissionCard({
     approved: 'bg-[rgba(47,158,68,0.16)] text-[#99ddaa]',
     rejected: 'bg-[rgba(210,100,100,0.16)] text-[#f3a8a8]',
   }
+
+  const recording = submission.recording
 
   return (
     <div className="surface-panel overflow-hidden">
@@ -217,6 +271,69 @@ function SubmissionCard({
             </div>
           )}
         </div>
+
+        {recording && (
+          <div className="mt-4 border-t border-[var(--border)] pt-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--foreground-secondary)]">
+                Analysis
+              </span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${RECORDING_STATUS_STYLES[recording.status]}`}>
+                {recording.status}
+              </span>
+              {recording.is_scoring ? (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-[rgba(216,163,71,0.16)] text-[#f0cb7c]">
+                  Scoring
+                </span>
+              ) : recording.score !== null ? (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-[rgba(47,158,68,0.16)] text-[#99ddaa]">
+                  Score ready
+                </span>
+              ) : (
+                <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-xs text-[var(--foreground-secondary)]">
+                  Not scored
+                </span>
+              )}
+              <Link
+                href={`/lab/recordings/${recording.id}`}
+                className="ml-auto text-xs text-[#aebeff] hover:text-white transition-colors"
+              >
+                View artifacts →
+              </Link>
+            </div>
+
+            {recording.score !== null && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+                <div className="flex flex-col items-start rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
+                  <span className="text-xs uppercase tracking-[0.14em] text-[var(--foreground-secondary)]">Score</span>
+                  <span className="text-2xl font-black tracking-[-0.03em] text-white">{recording.score}/10</span>
+                </div>
+                <div className="space-y-2 text-sm">
+                  {recording.summary && (
+                    <p className="text-white">{recording.summary}</p>
+                  )}
+                  {recording.score_reasoning && (
+                    <p className="text-[var(--foreground-secondary)]">{recording.score_reasoning}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {submission.analysisJobs.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {submission.analysisJobs.map((job) => (
+                  <span
+                    key={`${job.recording_id}-${job.kind}`}
+                    title={job.error ?? job.artifact_path ?? undefined}
+                    className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${JOB_STATUS_STYLES[job.status]}`}
+                  >
+                    {job.kind}: {job.status}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
