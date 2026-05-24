@@ -11,11 +11,33 @@ AnalysisKind = Literal[
     "yolo_objects",
     "sam_segments",
     "temporal_actions",
+    "gaussian_splat",
 ]
 
 AnalysisStatus = Literal["pending", "running", "succeeded", "failed"]
 
+SCORING_ANALYSIS_KINDS: tuple[AnalysisKind, ...] = ("gemini_eval",)
+
+RESOURCE_INTENSIVE_ANALYSIS_KINDS: tuple[AnalysisKind, ...] = (
+    "mediapipe_hands",
+    "yolo_objects",
+    "sam_segments",
+    "temporal_actions",
+    "gaussian_splat",
+)
+
 ANALYSIS_KINDS: tuple[AnalysisKind, ...] = (
+    "gemini_eval",
+    "mediapipe_hands",
+    "yolo_objects",
+    "sam_segments",
+    "temporal_actions",
+    "gaussian_splat",
+)
+
+# Kinds that run on every recording regardless of available streams.
+# gaussian_splat is excluded because it requires LiDAR depth (preflight-gated).
+UNCONDITIONAL_ANALYSIS_KINDS: tuple[AnalysisKind, ...] = (
     "gemini_eval",
     "mediapipe_hands",
     "yolo_objects",

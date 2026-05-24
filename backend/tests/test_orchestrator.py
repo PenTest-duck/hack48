@@ -1,14 +1,23 @@
 from backend.contracts import AnalysisRequest, GeminiEvaluation
-from backend.orchestrator import apply_gemini_result, final_recording_status
+from backend.orchestrator import (
+    apply_gemini_result,
+    final_recording_status,
+    prune_resource_intensive_jobs,
+)
 
 
 class FakeSupabase:
     def __init__(self):
         self.patches = []
+        self.deletes = []
 
     def patch_rows(self, table, query, payload):
         self.patches.append((table, query, payload))
         return [payload]
+
+    def delete_rows(self, table, query):
+        self.deletes.append((table, query))
+        return []
 
 
 def test_apply_gemini_result_flips_scoring_false():
@@ -44,6 +53,19 @@ def test_final_recording_status_prefers_in_progress_before_failed():
     assert final_recording_status(["succeeded", "failed"]) == "analysis_failed"
     assert final_recording_status(["succeeded", "running"]) == "analyzing"
     assert final_recording_status(["failed", "pending"]) == "analyzing"
+
+
+def test_prune_resource_intensive_jobs_keeps_scoring_job():
+    fake = FakeSupabase()
+
+    prune_resource_intensive_jobs(fake, "rec-1")
+
+    assert fake.deletes == [
+        (
+            "recording_analysis_jobs",
+            "recording_id=eq.rec-1&kind=in.(mediapipe_hands,yolo_objects,sam_segments,temporal_actions,gaussian_splat)",
+        )
+    ]
 
 
 def test_analysis_request_contract():

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -11,7 +12,12 @@ from typing import Any, Literal
 
 import modal
 
-from backend.artifacts import detected_object_summary, normalize_sam_prompts
+from backend.artifacts import (
+    analysis_artifact_paths,
+    detected_object_summary,
+    gaussian_splat_dir,
+    normalize_sam_prompts,
+)
 from backend.contracts import ANALYSIS_KINDS, AnalysisKind, AnalysisRequest
 from backend.modal_inference.hand_landmarks import ensure_hand_model, infer_hands
 from backend.modal_inference.media import (
@@ -23,7 +29,10 @@ from backend.modal_inference.media import (
 from backend.modal_inference.ultralytics_results import result_to_record
 from backend.orchestrator import (
     fetch_context,
+    finalize_multi_artifact_job,
+    gaussian_splat_preflight,
     mark_job,
+    prune_resource_intensive_jobs,
     run_gemini,
     run_remote_analyzer,
     update_final_status,
@@ -106,6 +115,34 @@ tas_image = (
     )
 )
 
+SPARK_CONVERTER_ROOT = "/opt/spark-converter"
+SPARK_CONVERTER_SCRIPT = f"{SPARK_CONVERTER_ROOT}/convert-to-spz.mjs"
+
+nerfstudio_image = (
+    modal.Image.from_registry(
+        "ghcr.io/nerfstudio-project/nerfstudio:latest",
+        add_python="3.10",
+    )
+    .apt_install("nodejs", "npm", "ffmpeg")
+    .pip_install(
+        "httpx>=0.28.0",
+        "numpy>=2.2.0",
+        "pillow>=10.0.0",
+        "pydantic>=2.7.0",
+    )
+    .run_commands(
+        f"mkdir -p {SPARK_CONVERTER_ROOT}",
+        f"cd {SPARK_CONVERTER_ROOT} && npm init -y && "
+        "npm install node@20.11.1 @sparkjsdev/spark@2.1.0",
+    )
+    .env({"PYTHONUNBUFFERED": "1", "MPLBACKEND": "Agg"})
+    .add_local_dir(
+        BACKEND_PACKAGE_DIR,
+        remote_path="/root/backend",
+        ignore=["**/__pycache__/**", "**/.pytest_cache/**"],
+    )
+)
+
 orchestrator_image = (
     modal.Image.debian_slim(python_version="3.12")
     .pip_install(
@@ -128,6 +165,19 @@ REMOTE_ANALYSIS_KINDS: tuple[AnalysisKind, ...] = (
     "sam_segments",
     "temporal_actions",
 )
+
+# The splat kind requires a depth-aware preflight, so it isn't part of
+# REMOTE_ANALYSIS_KINDS (which all run unconditionally on every submission).
+GAUSSIAN_SPLAT_KIND: AnalysisKind = "gaussian_splat"
+
+
+def resource_intensive_analysis_enabled() -> bool:
+    return os.environ.get("HACK48_ENABLE_RESOURCE_INTENSIVE_AI_TASKS", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _cuda_device() -> int | str:
@@ -635,6 +685,369 @@ class TemporalActionSegmenter:
         }
 
 
+SPARK_CONVERTER_JS = r"""
+import fs from "node:fs/promises";
+import path from "node:path";
+import { transcodeSpz } from "@sparkjsdev/spark";
+
+const [inputPath, outputPath] = process.argv.slice(2);
+if (!inputPath || !outputPath) {
+  console.error("usage: node convert-to-spz.mjs input.ply output.spz");
+  process.exit(2);
+}
+
+const input = path.resolve(inputPath);
+const output = path.resolve(outputPath);
+const fileBytes = new Uint8Array(await fs.readFile(input));
+const result = await transcodeSpz({
+  inputs: [{
+    fileBytes,
+    pathOrUrl: input,
+    transform: { translate: [0, 0, 0], quaternion: [0, 0, 0, 1], scale: 1 },
+  }],
+});
+
+await fs.mkdir(path.dirname(output), { recursive: true });
+await fs.writeFile(output, result.fileBytes);
+console.log(`wrote ${output} (${result.fileBytes.length} bytes)`);
+if (result.clippedCount) {
+  console.log(`clipped ${result.clippedCount} splats`);
+}
+"""
+
+
+@app.cls(
+    image=nerfstudio_image,
+    secrets=[backend_secret],
+    gpu="A10G",
+    timeout=40 * 60,
+    scaledown_window=60,
+    max_containers=2,
+)
+class SplatfactoTrainer:
+    @modal.enter()
+    def setup(self) -> None:
+        from pathlib import Path as _P
+        script_path = _P(SPARK_CONVERTER_SCRIPT)
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        if not script_path.exists():
+            script_path.write_text(SPARK_CONVERTER_JS)
+
+    @modal.method()
+    def train(
+        self,
+        recording_id: str,
+        storage_path: str,
+        *,
+        max_num_iterations: int = 7000,
+        method: str = "splatfacto",
+        bucket: str = "recordings",
+        update_db: bool = True,
+    ) -> dict[str, Any]:
+        import shlex
+        import shutil
+        import time as _time
+
+        from backend.splat.camera_path import write_camera_path
+        from backend.splat.convert import (
+            SPARK_CONVERTER_SCRIPT as _SCRIPT,
+            ply_to_spz,
+        )
+        from backend.splat.dataset import DatasetConfig, build_dataset
+        from backend.splat.manifest import (
+            CameraPathArtifact,
+            Intrinsics,
+            SeedPointsArtifact,
+            SplatArtifact,
+            SplatManifest,
+            TrainInfo,
+        )
+
+        # Ensure the spark converter script is materialised (idempotent).
+        _SCRIPT.parent.mkdir(parents=True, exist_ok=True)
+        if not _SCRIPT.exists():
+            _SCRIPT.write_text(SPARK_CONVERTER_JS)
+
+        api = SupabaseApi(SupabaseConfig.from_service_role_env())
+
+        def _safe_db(label: str, fn) -> None:
+            if not update_db:
+                return
+            try:
+                fn()
+            except Exception as exc:  # best-effort observability
+                print(f"[splat] {label} DB write failed: {exc}", flush=True)
+
+        # Best-effort: mark the job 'running' inside the container so the
+        # studio sees status without depending on the local entrypoint creds.
+        _safe_db(
+            "upsert running",
+            lambda: api.upsert_rows(
+                "recording_analysis_jobs",
+                [
+                    {
+                        "recording_id": recording_id,
+                        "kind": "gaussian_splat",
+                        "status": "running",
+                        "started_at": utc_now(),
+                        "finished_at": None,
+                        "error": None,
+                        "artifact_path": analysis_artifact_paths(
+                            recording_id
+                        )["gaussian_splat"],
+                    }
+                ],
+                on_conflict="recording_id,kind",
+            ),
+        )
+
+        try:
+            storage_prefix = storage_path.strip().strip("/") or recording_id
+            workspace = Path(tempfile.mkdtemp(prefix="splat-"))
+            try:
+                # 1) Pull required streams + recording row.
+                video_bytes = api.download_bytes(bucket, f"{storage_prefix}/video.mp4")
+                depth_bytes = api.download_bytes(bucket, f"{storage_prefix}/depth.bin")
+                poses_text = api.download_bytes(
+                    bucket, f"{storage_prefix}/poses.jsonl"
+                ).decode("utf-8")
+                intrinsics_payload = json.loads(
+                    api.download_bytes(
+                        bucket, f"{storage_prefix}/intrinsics.json"
+                    ).decode("utf-8")
+                )
+
+                row = api.select_one(
+                    "recordings",
+                    f"id=eq.{recording_id}"
+                    "&select=depth_width,depth_height,depth_frame_count",
+                )
+                depth_width = int(row["depth_width"])
+                depth_height = int(row["depth_height"])
+
+                video_path = workspace / "video.mp4"
+                depth_path = workspace / "depth.bin"
+                video_path.write_bytes(video_bytes)
+                depth_path.write_bytes(depth_bytes)
+
+                dataset_dir = workspace / "dataset"
+                run_root = workspace / "runs"
+                export_dir = workspace / "exports"
+                run_root.mkdir(parents=True, exist_ok=True)
+                export_dir.mkdir(parents=True, exist_ok=True)
+
+                # 2) Build the nerfstudio dataset (frames + transforms + sparse PC).
+                dataset_summary = build_dataset(
+                    output_dir=dataset_dir,
+                    video_path=video_path,
+                    depth_path=depth_path,
+                    poses_text=poses_text,
+                    intrinsics=intrinsics_payload,
+                    depth_width=depth_width,
+                    depth_height=depth_height,
+                    config=DatasetConfig(),
+                )
+
+                # 3) ns-train splatfacto.
+                train_started = _time.monotonic()
+                train_cmd = [
+                    "ns-train",
+                    method,
+                    "--data",
+                    str(dataset_dir),
+                    "--output-dir",
+                    str(run_root),
+                    "--max-num-iterations",
+                    str(max_num_iterations),
+                    "--viewer.quit-on-train-completion",
+                    "True",
+                ]
+                print("$", shlex.join(train_cmd), flush=True)
+                subprocess.run(
+                    ["bash", "-lc", shlex.join(train_cmd)], check=True
+                )
+
+                configs = sorted(
+                    run_root.glob("**/config.yml"),
+                    key=lambda path: path.stat().st_mtime,
+                )
+                if not configs:
+                    raise RuntimeError("no nerfstudio config.yml emitted by ns-train")
+                config_path = configs[-1]
+
+                # 4) ns-export gaussian-splat → PLY.
+                export_cmd = [
+                    "ns-export",
+                    "gaussian-splat",
+                    "--load-config",
+                    str(config_path),
+                    "--output-dir",
+                    str(export_dir),
+                ]
+                print("$", shlex.join(export_cmd), flush=True)
+                subprocess.run(
+                    ["bash", "-lc", shlex.join(export_cmd)], check=True
+                )
+
+                ply_path = export_dir / "splat.ply"
+                spz_path = export_dir / "splat.spz"
+                dataparser_path = config_path.parent / "dataparser_transforms.json"
+                if not ply_path.exists():
+                    raise RuntimeError(f"ns-export missing {ply_path}")
+                if not dataparser_path.exists():
+                    raise RuntimeError(f"ns-export missing {dataparser_path}")
+
+                # 5) PLY → SPZ.
+                ply_to_spz(ply_path, spz_path)
+
+                # 6) camera_path.json in the splat's coordinate frame.
+                camera_path_payload = write_camera_path(
+                    transforms_path=dataset_dir / "transforms.json",
+                    dataparser_path=dataparser_path,
+                    output_path=export_dir / "camera_path.json",
+                )
+
+                # 7) train_config.json (snapshot for repro).
+                train_config_dest = export_dir / "train_config.json"
+                train_config_dest.write_text(
+                    json.dumps(
+                        {
+                            "method": method,
+                            "iterations": max_num_iterations,
+                            "config_yml": config_path.read_text(),
+                        },
+                        indent=2,
+                    )
+                )
+
+                train_duration = _time.monotonic() - train_started
+                seed_ply_path = dataset_dir / "sparse_pc.ply"
+                seed_ply_count = dataset_summary.point_count
+
+                num_gaussians = _count_ply_vertices(ply_path)
+
+                manifest = SplatManifest(
+                    splat=SplatArtifact(
+                        path="splat.spz",
+                        size_bytes=spz_path.stat().st_size,
+                        num_gaussians=num_gaussians,
+                    ),
+                    camera_path=CameraPathArtifact(
+                        path="camera_path.json",
+                        frame_count=int(camera_path_payload["count"]),
+                        fps=float(camera_path_payload.get("fps") or dataset_summary.fps),
+                    ),
+                    seed_points=SeedPointsArtifact(
+                        path="seed_points.ply",
+                        point_count=seed_ply_count,
+                    ),
+                    train=TrainInfo(
+                        iterations=max_num_iterations,
+                        gpu="A10G",
+                        duration_seconds=float(train_duration),
+                        method=method,
+                    ),
+                    intrinsics=Intrinsics(
+                        fx=float(intrinsics_payload["fx"]),
+                        fy=float(intrinsics_payload["fy"]),
+                        cx=float(intrinsics_payload["cx"]),
+                        cy=float(intrinsics_payload["cy"]),
+                        width=int(intrinsics_payload["width"]),
+                        height=int(intrinsics_payload["height"]),
+                    ),
+                )
+                manifest_path = export_dir / "manifest.json"
+                manifest.write(manifest_path)
+
+                # 8) Upload artifacts to Supabase under analysis/gaussian_splat/.
+                splat_prefix = gaussian_splat_dir(recording_id)
+                api.upload_bytes(
+                    bucket,
+                    f"{splat_prefix}/splat.spz",
+                    spz_path.read_bytes(),
+                    "application/octet-stream",
+                )
+                api.upload_bytes(
+                    bucket,
+                    f"{splat_prefix}/camera_path.json",
+                    (export_dir / "camera_path.json").read_bytes(),
+                    "application/json",
+                )
+                api.upload_bytes(
+                    bucket,
+                    f"{splat_prefix}/seed_points.ply",
+                    seed_ply_path.read_bytes(),
+                    "application/octet-stream",
+                )
+                api.upload_bytes(
+                    bucket,
+                    f"{splat_prefix}/train_config.json",
+                    train_config_dest.read_bytes(),
+                    "application/json",
+                )
+                api.upload_bytes(
+                    bucket,
+                    f"{splat_prefix}/manifest.json",
+                    manifest_path.read_bytes(),
+                    "application/json",
+                )
+
+                manifest_storage_path = f"{splat_prefix}/manifest.json"
+                summary = manifest.db_summary()
+                _safe_db(
+                    "mark succeeded",
+                    lambda: mark_job(
+                        api,
+                        recording_id,
+                        "gaussian_splat",
+                        "succeeded",
+                        artifact_path=manifest_storage_path,
+                        summary=summary,
+                        error=None,
+                        finished_at=utc_now(),
+                    ),
+                )
+                return {
+                    "manifest_path": manifest_storage_path,
+                    "summary": summary,
+                }
+            finally:
+                shutil.rmtree(workspace, ignore_errors=True)
+        except Exception as exc:
+            _safe_db(
+                "mark failed",
+                lambda: mark_job(
+                    api,
+                    recording_id,
+                    "gaussian_splat",
+                    "failed",
+                    error=_error_message(exc),
+                    finished_at=utc_now(),
+                ),
+            )
+            raise
+        finally:
+            api.close()
+
+
+def _count_ply_vertices(ply_path: Path) -> int:
+    """Read a PLY header and return ``element vertex N`` count (binary or ascii)."""
+    with ply_path.open("rb") as f:
+        while True:
+            line = f.readline()
+            if not line:
+                break
+            try:
+                text = line.decode("ascii", errors="replace").strip()
+            except Exception:
+                continue
+            if text.startswith("element vertex "):
+                return int(text.split()[-1])
+            if text == "end_header":
+                break
+    return 0
+
+
 @app.function(
     image=orchestrator_image,
     secrets=[backend_secret],
@@ -649,7 +1062,7 @@ def process_recording(payload: dict) -> dict[str, object]:
 
     try:
         try:
-            task, _recording, video_bytes = fetch_context(api, request)
+            task, recording, video_bytes = fetch_context(api, request)
         except Exception as exc:
             message = _error_message(exc)
             for kind in ANALYSIS_KINDS:
@@ -671,60 +1084,104 @@ def process_recording(payload: dict) -> dict[str, object]:
         api.patch_rows("recordings", f"id=eq.{request.recording_id}", {"status": "analyzing"})
         prompts = normalize_sam_prompts(task.objects)
 
+        run_resource_intensive = resource_intensive_analysis_enabled()
+        if not run_resource_intensive:
+            prune_resource_intensive_jobs(api, request.recording_id)
+
+        splat_eligible = run_resource_intensive and gaussian_splat_preflight(recording)
+        if splat_eligible:
+            # The submit-recording Edge Function doesn't pre-create gaussian_splat
+            # rows (preflight is depth-dependent), so we insert one here before
+            # marking it running.
+            api.upsert_rows(
+                "recording_analysis_jobs",
+                [
+                    {
+                        "recording_id": request.recording_id,
+                        "kind": GAUSSIAN_SPLAT_KIND,
+                        "status": "pending",
+                        "artifact_path": analysis_artifact_paths(
+                            request.recording_id
+                        )[GAUSSIAN_SPLAT_KIND],
+                    }
+                ],
+                on_conflict="recording_id,kind",
+            )
+
         futures = {}
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=6) as executor:
             futures[executor.submit(run_gemini, api, request, task, video_bytes)] = "gemini_eval"
 
-            for kind in REMOTE_ANALYSIS_KINDS:
+            if run_resource_intensive:
+                for kind in REMOTE_ANALYSIS_KINDS:
+                    mark_job(
+                        api,
+                        request.recording_id,
+                        kind,
+                        "running",
+                        error=None,
+                        started_at=utc_now(),
+                        finished_at=None,
+                    )
+
+                futures[
+                    executor.submit(
+                        lambda: Yolo26().predict.remote(
+                            video_bytes,
+                            suffix=".mp4",
+                            task="detect",
+                            max_frames=None,
+                        )
+                    )
+                ] = "yolo_objects"
+                futures[
+                    executor.submit(
+                        lambda: MediaPipeHands().landmarks.remote(
+                            video_bytes,
+                            suffix=".mp4",
+                            target_fps=10.0,
+                            max_frames=None,
+                        )
+                    )
+                ] = "mediapipe_hands"
+                futures[
+                    executor.submit(
+                        lambda: SAM31Segmenter().segment.remote(
+                            video_bytes,
+                            suffix=".mp4",
+                            text_prompts=prompts,
+                            max_frames=None,
+                        )
+                    )
+                ] = "sam_segments"
+                futures[
+                    executor.submit(
+                        lambda: TemporalActionSegmenter().segment.remote(
+                            video_bytes,
+                            suffix=".mp4",
+                            max_segments=200,
+                        )
+                    )
+                ] = "temporal_actions"
+
+            if splat_eligible:
                 mark_job(
                     api,
                     request.recording_id,
-                    kind,
+                    GAUSSIAN_SPLAT_KIND,
                     "running",
                     error=None,
                     started_at=utc_now(),
                     finished_at=None,
                 )
-
-            futures[
-                executor.submit(
-                    lambda: Yolo26().predict.remote(
-                        video_bytes,
-                        suffix=".mp4",
-                        task="detect",
-                        max_frames=None,
+                futures[
+                    executor.submit(
+                        lambda: SplatfactoTrainer().train.remote(
+                            request.recording_id,
+                            request.storage_path,
+                        )
                     )
-                )
-            ] = "yolo_objects"
-            futures[
-                executor.submit(
-                    lambda: MediaPipeHands().landmarks.remote(
-                        video_bytes,
-                        suffix=".mp4",
-                        target_fps=10.0,
-                        max_frames=None,
-                    )
-                )
-            ] = "mediapipe_hands"
-            futures[
-                executor.submit(
-                    lambda: SAM31Segmenter().segment.remote(
-                        video_bytes,
-                        suffix=".mp4",
-                        text_prompts=prompts,
-                        max_frames=None,
-                    )
-                )
-            ] = "sam_segments"
-            futures[
-                executor.submit(
-                    lambda: TemporalActionSegmenter().segment.remote(
-                        video_bytes,
-                        suffix=".mp4",
-                        max_segments=200,
-                    )
-                )
-            ] = "temporal_actions"
+                ] = GAUSSIAN_SPLAT_KIND
 
             for future in as_completed(futures):
                 kind = futures[future]
@@ -749,6 +1206,27 @@ def process_recording(payload: dict) -> dict[str, object]:
                     continue
 
                 if kind == "gemini_eval":
+                    continue
+
+                if kind == GAUSSIAN_SPLAT_KIND:
+                    try:
+                        finalize_multi_artifact_job(
+                            api,
+                            request,
+                            GAUSSIAN_SPLAT_KIND,
+                            artifact_path=artifact_payload["manifest_path"],
+                            db_summary=artifact_payload.get("summary"),
+                        )
+                    except Exception as exc:
+                        failed = True
+                        mark_job(
+                            api,
+                            request.recording_id,
+                            kind,
+                            "failed",
+                            error=_error_message(exc),
+                            finished_at=utc_now(),
+                        )
                     continue
 
                 try:
@@ -856,6 +1334,119 @@ def main(
     else:
         raise ValueError(f"Unsupported kind: {kind}")
 
+    _upload_output(result, output_json)
+
+
+@app.function(
+    image=orchestrator_image,
+    secrets=[backend_secret],
+    timeout=120,
+)
+def list_splat_artifacts(recording_id: str) -> list[dict[str, Any]]:
+    """List the files Supabase Storage has under
+    ``{recording_id}/analysis/gaussian_splat/``."""
+    from backend.artifacts import gaussian_splat_dir as _dir
+
+    api = SupabaseApi(SupabaseConfig.from_service_role_env())
+    try:
+        prefix = _dir(recording_id)
+        res = api.client.post(
+            f"{api.config.url}/storage/v1/object/list/recordings",
+            headers=api.rest_headers(),
+            content=json.dumps({"prefix": prefix, "limit": 100}),
+        )
+        return api._json(res) or []
+    finally:
+        api.close()
+
+
+@app.local_entrypoint()
+def list_splat(recording_id: str) -> None:
+    """List Supabase Storage objects under the recording's gaussian_splat dir."""
+    rows = list_splat_artifacts.remote(recording_id)
+    print(json.dumps(rows, indent=2, default=str))
+
+
+@app.function(
+    image=orchestrator_image,
+    secrets=[backend_secret],
+    timeout=120,
+)
+def mark_splat_succeeded_remote(recording_id: str) -> dict[str, Any]:
+    """Read the already-uploaded manifest and upsert a succeeded job row.
+
+    Useful after a successful train when the DB row write was skipped (e.g.
+    the kind-constraint migration was applied later)."""
+    from backend.splat.manifest import MANIFEST_VERSION  # noqa: F401
+
+    api = SupabaseApi(SupabaseConfig.from_service_role_env())
+    try:
+        manifest_path = analysis_artifact_paths(recording_id)["gaussian_splat"]
+        manifest_bytes = api.download_bytes("recordings", manifest_path)
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+        summary = {
+            "num_gaussians": manifest["splat"]["num_gaussians"],
+            "frame_count": manifest["camera_path"]["frame_count"],
+            "fps": manifest["camera_path"]["fps"],
+            "train_duration_seconds": manifest["train"]["duration_seconds"],
+            "iterations": manifest["train"]["iterations"],
+            "gpu": manifest["train"]["gpu"],
+        }
+        api.upsert_rows(
+            "recording_analysis_jobs",
+            [
+                {
+                    "recording_id": recording_id,
+                    "kind": "gaussian_splat",
+                    "status": "succeeded",
+                    "artifact_path": manifest_path,
+                    "summary": summary,
+                    "error": None,
+                    "started_at": utc_now(),
+                    "finished_at": utc_now(),
+                }
+            ],
+            on_conflict="recording_id,kind",
+        )
+        return {"manifest_path": manifest_path, "summary": summary}
+    finally:
+        api.close()
+
+
+@app.local_entrypoint()
+def mark_splat(recording_id: str) -> None:
+    """Write a succeeded recording_analysis_jobs row for an already-uploaded splat."""
+    result = mark_splat_succeeded_remote.remote(recording_id)
+    print(json.dumps(result, indent=2))
+
+
+@app.local_entrypoint()
+def run_splat(
+    recording_id: str,
+    storage_path: str = "",
+    max_num_iterations: int = 7000,
+    output_json: str = "",
+    update_db: bool = True,
+) -> None:
+    """Run gaussian splat training for an existing Supabase recording.
+
+    The recording row, video.mp4, depth.bin, poses.jsonl, and intrinsics.json
+    must already exist in the ``recordings`` bucket. Artifacts are uploaded to
+    ``{recording_id}/analysis/gaussian_splat/``.
+
+    DB updates to ``recording_analysis_jobs`` happen inside the trainer
+    container (which has Supabase creds via the Modal secret). If the
+    kind-constraint migration hasn't been applied yet, the DB writes will be
+    logged-and-skipped on the container side; storage uploads still complete.
+    Pass ``--no-update-db`` to skip DB writes entirely.
+    """
+    storage = (storage_path or f"{recording_id}/").strip().strip("/") + "/"
+    result = SplatfactoTrainer().train.remote(
+        recording_id,
+        storage,
+        max_num_iterations=max_num_iterations,
+        update_db=update_db,
+    )
     _upload_output(result, output_json)
 
 

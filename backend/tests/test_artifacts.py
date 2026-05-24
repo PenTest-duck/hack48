@@ -2,6 +2,7 @@ from backend.artifacts import (
     ANALYSIS_FILENAMES,
     analysis_artifact_paths,
     detected_object_summary,
+    gaussian_splat_dir,
     normalize_sam_prompts,
 )
 
@@ -15,8 +16,14 @@ def test_analysis_artifact_paths_are_stable():
         "yolo_objects": "abc123/analysis/yolo-detections.json",
         "sam_segments": "abc123/analysis/sam-segments.json",
         "temporal_actions": "abc123/analysis/temporal-actions.json",
+        "gaussian_splat": "abc123/analysis/gaussian_splat/manifest.json",
     }
     assert set(paths) == set(ANALYSIS_FILENAMES)
+
+
+def test_gaussian_splat_dir_strips_slashes():
+    assert gaussian_splat_dir("abc123") == "abc123/analysis/gaussian_splat"
+    assert gaussian_splat_dir("/abc123/") == "abc123/analysis/gaussian_splat"
 
 
 def test_detected_object_summary_compacts_frame_records():

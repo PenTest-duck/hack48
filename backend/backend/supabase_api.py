@@ -84,6 +84,14 @@ class SupabaseApi:
         )
         return self._json(res)
 
+    def delete_rows(self, table: str, query: str) -> list[dict[str, Any]]:
+        url = f"{self.config.url}/rest/v1/{table}?{query}"
+        res = self.client.delete(
+            url,
+            headers=self.rest_headers({"Prefer": "return=representation"}),
+        )
+        return self._json(res)
+
     def upsert_rows(
         self,
         table: str,

@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from backend.contracts import ANALYSIS_KINDS
+from backend.contracts import SCORING_ANALYSIS_KINDS, UNCONDITIONAL_ANALYSIS_KINDS
 from backend.supabase_api import SupabaseApi, SupabaseConfig
 
 
@@ -21,6 +21,15 @@ CONTENT_TYPES = {
     ".jsonl": "application/x-ndjson",
     ".bin": "application/octet-stream",
 }
+
+
+def resource_intensive_analysis_enabled() -> bool:
+    return os.environ.get("HACK48_ENABLE_RESOURCE_INTENSIVE_AI_TASKS", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def patch_metadata(
@@ -186,7 +195,11 @@ def poll_all_jobs(
 ) -> list[dict[str, Any]]:
     deadline = time.monotonic() + timeout_s
     terminal = {"succeeded", "failed"}
-    expected_jobs = len(ANALYSIS_KINDS)
+    required_kinds = set(
+        UNCONDITIONAL_ANALYSIS_KINDS
+        if resource_intensive_analysis_enabled()
+        else SCORING_ANALYSIS_KINDS
+    )
     while time.monotonic() < deadline:
         res = api.client.get(
             f"{api.config.url}/rest/v1/recording_analysis_jobs"
@@ -196,7 +209,13 @@ def poll_all_jobs(
             headers=api.rest_headers(),
         )
         rows = api._json(res)
-        if len(rows) == expected_jobs and all(row["status"] in terminal for row in rows):
+        kinds_seen = {row["kind"] for row in rows}
+        # All unconditional kinds present and every present row is terminal.
+        # gaussian_splat is optional (depth-gated) so we don't require it.
+        if (
+            required_kinds.issubset(kinds_seen)
+            and all(row["status"] in terminal for row in rows)
+        ):
             failed_rows = [row for row in rows if row["status"] == "failed"]
             if failed_rows:
                 summary = "; ".join(

@@ -7,6 +7,7 @@ from backend.tools.e2e_upload_bundle import (
     patch_metadata,
     poll_all_jobs,
     poll_score,
+    resource_intensive_analysis_enabled,
 )
 
 
@@ -136,6 +137,18 @@ def test_poll_all_jobs_fails_on_terminal_failed_jobs():
         poll_all_jobs(api, "rec", timeout_s=10)
 
     assert api.downloaded == []
+
+
+def test_resource_intensive_analysis_flag_defaults_off(monkeypatch):
+    monkeypatch.delenv("HACK48_ENABLE_RESOURCE_INTENSIVE_AI_TASKS", raising=False)
+
+    assert resource_intensive_analysis_enabled() is False
+
+
+def test_resource_intensive_analysis_flag_accepts_truthy(monkeypatch):
+    monkeypatch.setenv("HACK48_ENABLE_RESOURCE_INTENSIVE_AI_TASKS", "1")
+
+    assert resource_intensive_analysis_enabled() is True
 
 
 class FakeResponse:

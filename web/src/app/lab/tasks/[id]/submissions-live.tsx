@@ -272,14 +272,35 @@ function SubmissionCard({
 
   return (
     <div className="surface-panel overflow-hidden">
-      {/* Video player */}
+      {/* Video player → click to open studio */}
       {submission.signedUrl ? (
-        <video
-          src={submission.signedUrl}
-          controls
-          className="w-full max-h-64 bg-black"
-          preload="metadata"
-        />
+        recording?.id ? (
+          <Link
+            href={`/studio/${recording.id}`}
+            className="group relative block bg-black"
+            aria-label="Open in studio"
+          >
+            <video
+              src={submission.signedUrl}
+              muted
+              playsInline
+              preload="metadata"
+              className="w-full max-h-64 bg-black pointer-events-none"
+            />
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
+              <span className="rounded border border-white/30 bg-black/60 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-white">
+                Open in studio →
+              </span>
+            </div>
+          </Link>
+        ) : (
+          <video
+            src={submission.signedUrl}
+            controls
+            className="w-full max-h-64 bg-black"
+            preload="metadata"
+          />
+        )
       ) : (
         <div className="flex h-40 w-full items-center justify-center bg-[var(--surface-muted)]">
           <span className="text-sm text-[var(--foreground-secondary)]">Video preview unavailable</span>
@@ -403,10 +424,10 @@ function SubmissionCard({
                 </span>
               )}
               <Link
-                href={`/lab/recordings/${recording.id}`}
+                href={`/studio/${recording.id}`}
                 className="ml-auto text-xs text-[#aebeff] hover:text-white transition-colors"
               >
-                View artifacts →
+                Open in studio →
               </Link>
             </div>
 

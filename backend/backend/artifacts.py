@@ -12,6 +12,7 @@ ANALYSIS_FILENAMES: dict[AnalysisKind, str] = {
     "yolo_objects": "yolo-detections.json",
     "sam_segments": "sam-segments.json",
     "temporal_actions": "temporal-actions.json",
+    "gaussian_splat": "gaussian_splat/manifest.json",
 }
 
 
@@ -21,6 +22,12 @@ def analysis_artifact_paths(recording_id: str) -> dict[AnalysisKind, str]:
         kind: f"{prefix}/analysis/{filename}"
         for kind, filename in ANALYSIS_FILENAMES.items()
     }
+
+
+def gaussian_splat_dir(recording_id: str) -> str:
+    """Return the storage directory prefix for the gaussian splat artifacts."""
+    prefix = recording_id.strip().strip("/")
+    return f"{prefix}/analysis/gaussian_splat"
 
 
 def normalize_sam_prompts(objects: list[str] | None) -> list[str]:

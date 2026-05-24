@@ -20,6 +20,7 @@ Required local or Modal secret values:
 - `GEMINI_API_KEY`
 - `MODAL_ANALYSIS_SECRET`
 - `GEMINI_MODEL` (optional; defaults to `gemini-3.5-flash`)
+- `HACK48_ENABLE_RESOURCE_INTENSIVE_AI_TASKS` (optional; defaults off. Set to `1` for demo runs to enable YOLO, MediaPipe, SAM, temporal actions, and Gaussian splats.)
 
 Deploy:
 

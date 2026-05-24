@@ -10,15 +10,21 @@ const cors = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const analysisKinds = [
-  "gemini_eval",
+const scoringAnalysisKinds = ["gemini_eval"] as const;
+const resourceIntensiveAnalysisKinds = [
   "mediapipe_hands",
   "yolo_objects",
   "sam_segments",
   "temporal_actions",
 ] as const;
 
-const analysisFilenames: Record<typeof analysisKinds[number], string> = {
+const allAnalysisKinds = [
+  ...scoringAnalysisKinds,
+  ...resourceIntensiveAnalysisKinds,
+] as const;
+type AnalysisKind = typeof allAnalysisKinds[number];
+
+const analysisFilenames: Record<AnalysisKind, string> = {
   gemini_eval: "gemini-eval.json",
   mediapipe_hands: "mediapipe-hands.json",
   yolo_objects: "yolo-detections.json",
@@ -27,6 +33,12 @@ const analysisFilenames: Record<typeof analysisKinds[number], string> = {
 };
 
 const terminalRecordingStatuses = new Set(["analyzed", "analysis_failed"]);
+
+function resourceIntensiveAnalysisEnabled() {
+  return ["1", "true", "yes", "on"].includes(
+    (Deno.env.get("HACK48_ENABLE_RESOURCE_INTENSIVE_AI_TASKS") ?? "").toLowerCase(),
+  );
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -132,6 +144,67 @@ Deno.serve(async (req) => {
   }
 
   const storagePathWithoutTrailingSlash = storagePath.replace(/\/+$/, "") || recordingId;
+  const runResourceIntensiveAnalysis = resourceIntensiveAnalysisEnabled();
+
+  // Populate depth_width / depth_height / depth_frame_count on the recording
+  // row from metadata.json + the size of depth.bin. The orchestrator's
+  // gaussian_splat preflight gates on these columns being set, so without
+  // this step splat training never auto-triggers on new submissions.
+  // Best-effort: failures here just mean the splat job is skipped for this
+  // recording; all other analyzers proceed.
+  if (runResourceIntensiveAnalysis) {
+    try {
+      const metadataObjectPath = `${storagePathWithoutTrailingSlash}/metadata.json`;
+      const { data: metadataBlob, error: metadataErr } = await admin.storage
+        .from("recordings")
+        .download(metadataObjectPath);
+      if (metadataErr) {
+        console.warn(`depth: metadata.json fetch failed (${metadataErr.message})`);
+      } else if (metadataBlob) {
+        const metadata = JSON.parse(await metadataBlob.text()) as {
+          depth?: { width?: unknown; height?: unknown; file?: unknown };
+        };
+        const dw = numOrNull(metadata.depth?.width);
+        const dh = numOrNull(metadata.depth?.height);
+        const depthFile = typeof metadata.depth?.file === "string" && metadata.depth.file.length > 0
+          ? metadata.depth.file
+          : "depth.bin";
+        if (dw && dh) {
+          const { data: depthListing, error: listErr } = await admin.storage
+            .from("recordings")
+            .list(storagePathWithoutTrailingSlash, { search: depthFile, limit: 1 });
+          if (listErr) {
+            console.warn(`depth: depth.bin list failed (${listErr.message})`);
+          }
+          const depthSize = Number(depthListing?.[0]?.metadata?.size ?? 0);
+          const recordSize = 8 + dw * dh * 4;
+          const frameCount = depthSize > 0 && recordSize > 0
+            ? Math.floor(depthSize / recordSize)
+            : 0;
+          if (frameCount > 0) {
+            const { error: depthErr } = await admin
+              .from("recordings")
+              .update({
+                depth_width: dw,
+                depth_height: dh,
+                depth_frame_count: frameCount,
+              })
+              .eq("id", recordingId);
+            if (depthErr) {
+              console.warn(`depth: row update failed (${depthErr.message})`);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`depth: metadata extraction threw (${e instanceof Error ? e.message : String(e)})`);
+    }
+  }
+
+  const analysisKinds: AnalysisKind[] = runResourceIntensiveAnalysis
+    ? [...allAnalysisKinds]
+    : [...scoringAnalysisKinds];
+
   const jobRows = analysisKinds.map((kind) => ({
     recording_id: recordingId,
     kind,
@@ -158,6 +231,8 @@ Deno.serve(async (req) => {
     recording_id: recordingId,
     submission_id: submissionId,
     streams,
+    analysis_kinds: analysisKinds,
+    resource_intensive_analysis_enabled: runResourceIntensiveAnalysis,
     analysis_started: modalResult.ok,
     analysis_error: modalResult.ok ? null : modalResult.error,
   }, 200);
