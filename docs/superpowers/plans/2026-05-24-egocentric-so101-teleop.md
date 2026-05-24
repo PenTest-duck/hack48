@@ -799,7 +799,7 @@ def arm(
 
 
 def arm_mapper(**overrides) -> ArmMapper:
-    config = MappingConfig(
+    defaults = dict(
         shoulder_pan_gain=1.0,
         shoulder_lift_gain=1.0,
         elbow_flex_gain=1.0,
@@ -809,9 +809,9 @@ def arm_mapper(**overrides) -> ArmMapper:
         gripper_closed=20.0,
         pinch_closed_ratio=0.35,
         pinch_open_ratio=1.40,
-        **overrides,
     )
-    return ArmMapper(config)
+    defaults.update(overrides)
+    return ArmMapper(MappingConfig(**defaults))
 
 
 def test_arm_hanging_straight_down_yields_zero_elbow_flex_and_shoulder_lift() -> None:
@@ -1094,7 +1094,7 @@ def teleop_sample(*, arm_sample=None, hand_sample=None, timestamp_ms=1000) -> Te
 
 
 def teleop_mapper(**overrides) -> TeleopMapper:
-    config = MappingConfig(
+    defaults = dict(
         shoulder_pan_gain=1.0,
         shoulder_lift_gain=1.0,
         elbow_flex_gain=1.0,
@@ -1104,9 +1104,9 @@ def teleop_mapper(**overrides) -> TeleopMapper:
         gripper_closed=20.0,
         pinch_closed_ratio=0.35,
         pinch_open_ratio=1.40,
-        **overrides,
     )
-    return TeleopMapper(config)
+    defaults.update(overrides)
+    return TeleopMapper(MappingConfig(**defaults))
 
 
 def test_teleop_mapper_neutral_requires_both_arm_and_hand() -> None:
@@ -1195,7 +1195,7 @@ class TeleopMapper:
         if sample.arm is None or sample.hand is None:
             raise ValueError("TeleopMapper map requires both arm and hand samples")
         if not self.neutral_ready:
-            raise RuntimeError("Neutral TeleopMapper features have not been captured")
+            raise RuntimeError("Neutral TeleopMapper sample has not been captured")
 
         arm_targets = self.arm.map(sample.arm)
         wrist_targets = self.wrist.map(sample.hand)
@@ -2064,6 +2064,7 @@ def test_ensure_model_downloads_when_missing(tmp_path: Path) -> None:
     class FakeResponse:
         def __init__(self, payload: bytes) -> None:
             self._payload = payload
+            self._sent = False
 
         def __enter__(self) -> "FakeResponse":
             return self
@@ -2072,6 +2073,9 @@ def test_ensure_model_downloads_when_missing(tmp_path: Path) -> None:
             return None
 
         def read(self, _size: int = -1) -> bytes:
+            if self._sent:
+                return b""
+            self._sent = True
             return self._payload
 
     def fake_urlopen(url: str, timeout: int) -> FakeResponse:
