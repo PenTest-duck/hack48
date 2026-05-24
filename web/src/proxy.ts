@@ -58,13 +58,7 @@ export async function proxy(request: NextRequest) {
     const role = profile?.role ?? user.user_metadata?.role
 
     if (isLanding) {
-      if (role === 'lab') {
-        return NextResponse.redirect(new URL('/lab/dashboard', request.url))
-      }
-      if (role === 'collector') {
-        return NextResponse.redirect(new URL('/collector/tasks', request.url))
-      }
-      // No role yet — show landing page
+      // Always show landing page — don't auto-redirect logged-in users
       return supabaseResponse
     }
 

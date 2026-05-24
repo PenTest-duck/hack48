@@ -81,7 +81,7 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <Link href="/" className="flex items-center gap-3 transition-colors hover:opacity-80">
               <GabrielHornLogo />
-              <span className="text-base font-bold tracking-[0.01em] text-white">DataMarket</span>
+              <span className="text-base font-bold tracking-[0.01em] text-white">Aperture</span>
             </Link>
             <span className="px-2.5 py-1 text-xs font-bold tracking-[0.18em] uppercase rounded-full bg-[rgba(59,91,219,0.16)] text-[#aebeff]">Lab</span>
           </div>

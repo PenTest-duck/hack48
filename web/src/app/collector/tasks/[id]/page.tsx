@@ -50,7 +50,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
     .single()
 
   const spotsLeft = task.quantity_needed - task.quantity_filled
-  const deepLink = `datamarket://task/${id}`
+  const deepLink = `aperture://task/${id}`
   const requirements = ((task.required_capabilities as string[] | null) ?? []).filter(Boolean)
   const taskWithMedia = task as typeof task & {
     metadata?: { reference_assets?: ReferenceAsset[] }
@@ -261,7 +261,7 @@ export default async function CollectorTaskPage({ params }: { params: Promise<{ 
                   </div>
                   <h2 className="mt-4 text-xl font-bold text-white">Open in iPhone app</h2>
                   <p className="mt-2 text-sm leading-6 text-[var(--foreground-secondary)]">
-                    Submission happens on iOS only. Launch the DataMarket app, capture the task, and your confirmation state will appear here automatically.
+                    Submission happens on iOS only. Launch the Aperture app, capture the task, and your confirmation state will appear here automatically.
                   </p>
                 </div>
 

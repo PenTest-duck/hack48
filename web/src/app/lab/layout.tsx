@@ -35,7 +35,7 @@ export default async function LabLayout({ children }: { children: React.ReactNod
                 <path d="M 5.6 42.6 C 7.5 39, 11 25.8, 44.5 25.15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                 <ellipse cx="5.6" cy="24" rx="2.6" ry="18.6" stroke="currentColor" strokeWidth="1.6" />
               </svg>
-              <span className="font-semibold tracking-[0.08em] text-white">DataMarket</span>
+              <span className="font-semibold tracking-[0.08em] text-white">Aperture</span>
             </Link>
             <span className="role-pill-lab rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]">Lab</span>
             <Link href="/lab/dashboard" className="hidden text-sm text-[var(--foreground-secondary)] transition-colors hover:text-white sm:inline">Dashboard</Link>

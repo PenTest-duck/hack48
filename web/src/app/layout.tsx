@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DataMarket — Physical Data Marketplace",
+  title: "Aperture — Physical Data Marketplace",
   description: "Earn money collecting real-world data for AI research",
 };
 
