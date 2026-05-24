@@ -3,6 +3,7 @@ import pytest
 from backend.tools.e2e_upload_bundle import (
     build_submit_payload,
     ensure_analysis_started,
+    normalize_recording_id,
     patch_metadata,
     poll_all_jobs,
     poll_score,
@@ -60,6 +61,16 @@ def test_ensure_analysis_started_fails_on_explicit_false():
                 "analysis_error": "Modal analysis env is not configured",
             }
         )
+
+
+def test_normalize_recording_id_requires_uuid():
+    assert (
+        normalize_recording_id("E1E838FC-4506-4FEE-9E75-32C35F7B9460")
+        == "e1e838fc-4506-4fee-9e75-32c35f7b9460"
+    )
+
+    with pytest.raises(ValueError, match="recording_id must be a UUID"):
+        normalize_recording_id("e2e-not-a-uuid")
 
 
 def test_poll_score_fails_when_scoring_done_without_fields():

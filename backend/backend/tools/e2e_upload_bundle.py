@@ -114,8 +114,20 @@ def submit_recording(
         json=payload,
         timeout=120,
     )
-    res.raise_for_status()
+    try:
+        res.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(
+            f"submit-recording failed {res.status_code}: {res.text}"
+        ) from exc
     return res.json()
+
+
+def normalize_recording_id(recording_id: str) -> str:
+    try:
+        return str(uuid.UUID(recording_id))
+    except ValueError as exc:
+        raise ValueError(f"recording_id must be a UUID: {recording_id}") from exc
 
 
 def ensure_analysis_started(response: dict[str, Any]) -> None:
@@ -219,7 +231,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    recording_id = (args.recording_id or str(uuid.uuid4())).lower()
+    recording_id = normalize_recording_id(args.recording_id or str(uuid.uuid4()))
     bundle = args.bundle.expanduser().resolve()
     if not bundle.is_dir():
         raise SystemExit(f"Bundle directory does not exist: {bundle}")
