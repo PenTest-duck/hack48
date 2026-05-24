@@ -62,7 +62,7 @@ export default async function LabTaskPage({ params }: { params: Promise<{ id: st
               <span className="rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-0.5 text-xs text-[var(--foreground-secondary)]">
                 {task.data_type}
               </span>
-              {(task.required_capabilities as string[]).map((cap: string) => (
+              {((task.required_capabilities as string[] | null) ?? []).map((cap: string) => (
                 <span key={cap} className="rounded-full border border-[var(--border)] bg-[rgba(59,91,219,0.12)] px-2 py-0.5 text-xs text-[#aebeff]">
                   {cap}
                 </span>

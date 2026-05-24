@@ -151,7 +151,7 @@ export default function Home() {
             </h1>
 
             <p className="mt-9 text-[19px] leading-[1.55] text-[var(--foreground-secondary)] max-w-lg font-medium">
-              Models can't touch reality. You can. Capture the world, get paid.
+              Models can&apos;t touch reality. You can. Capture the world, get paid.
             </p>
 
             <div className="mt-11 flex flex-col sm:flex-row gap-3 flex-wrap">
@@ -202,7 +202,7 @@ export default function Home() {
                 of robotics teams cite scarcity of real-world data as their top development blocker.
               </div>
               <div className="mt-auto pt-3 text-xs uppercase tracking-[0.14em] text-[var(--foreground-tertiary)]">
-                SRC · Embodied AI Survey '25
+                SRC · Embodied AI Survey &apos;25
               </div>
             </div>
 
@@ -220,7 +220,7 @@ export default function Home() {
 
             <div className="py-9 md:pl-8 md:py-9">
               <div className="text-[clamp(48px,5.6vw,76px)] font-black tracking-[-0.04em] leading-[0.95]" style={{ color: '#d8a347', fontVariantNumeric: 'tabular-nums' }}>
-                $8.4<span className="text-[0.42em] font-semibold text-[var(--foreground-secondary)] tracking-[0.04em]">B by '28</span>
+                $8.4<span className="text-[0.42em] font-semibold text-[var(--foreground-secondary)] tracking-[0.04em]">B by &apos;28</span>
               </div>
               <div className="mt-3.5 text-[15px] leading-[1.5] text-[var(--foreground-secondary)] max-w-[32ch]">
                 projected spend on first-party, physical-world AI training data within three years.
