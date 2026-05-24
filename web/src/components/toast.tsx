@@ -31,7 +31,8 @@ export default function ToastContainer() {
       {toasts.map(toast => (
         <div
           key={toast.id}
-          className="surface-panel flex items-center gap-2 px-4 py-3 text-sm text-white animate-in slide-in-from-bottom-2"
+          className="surface-panel flex items-center gap-2 px-4 py-3 text-sm text-white"
+          style={{ animation: 'toast-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1)' }}
         >
           <span className="h-2 w-2 shrink-0 rounded-full bg-[#2f9e44]" />
           {toast.message}

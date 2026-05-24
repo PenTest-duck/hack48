@@ -37,6 +37,12 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
   const isPublic = PUBLIC_PATHS.some((path) => pathname.startsWith(path))
+  const isLanding = pathname === '/'
+
+  // Landing page is always accessible
+  if (isLanding && !user) {
+    return supabaseResponse
+  }
 
   if (!user && !isPublic) {
     return NextResponse.redirect(new URL('/login', request.url))
@@ -51,13 +57,9 @@ export async function proxy(request: NextRequest) {
 
     const role = profile?.role ?? user.user_metadata?.role
 
-    if (pathname === '/') {
-      if (role === 'lab') {
-        return NextResponse.redirect(new URL('/lab/dashboard', request.url))
-      }
-      if (role === 'collector') {
-        return NextResponse.redirect(new URL('/collector/tasks', request.url))
-      }
+    if (isLanding) {
+      // Always show landing page — don't auto-redirect logged-in users
+      return supabaseResponse
     }
 
     if (pathname.startsWith('/lab') && role !== 'lab') {
