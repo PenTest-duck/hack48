@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import SubmissionsLive, { type AnalysisJob, type RecordingAnalysis } from './submissions-live'
+import EditableTaskHeader from './editable-task-header'
 
 export default async function LabTaskPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -93,18 +94,13 @@ export default async function LabTaskPage({ params }: { params: Promise<{ id: st
       {/* Task header */}
       <div className="surface-panel mb-6 p-6">
         <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-xl font-bold text-white">{task.title}</h1>
-              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                task.status === 'open' ? 'bg-[rgba(59,91,219,0.16)] text-[#aebeff]' : 'bg-[rgba(115,120,131,0.18)] text-[#d3d7de]'
-              }`}>
-                {task.status}
-              </span>
-            </div>
-            {task.description && (
-              <p className="mt-1 text-sm text-[var(--foreground-secondary)]">{task.description}</p>
-            )}
+          <div className="flex-1 min-w-0">
+            <EditableTaskHeader
+              taskId={id}
+              initialTitle={task.title}
+              initialDescription={task.description ?? null}
+              status={task.status}
+            />
             <div className="flex flex-wrap gap-2 mt-3">
               <span className="rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-0.5 text-xs text-[var(--foreground-secondary)]">
                 {task.data_type}
