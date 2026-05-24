@@ -296,6 +296,55 @@ def test_fuse_samples_returns_none_arm_when_arm_missing() -> None:
     assert sample.hand is hand
 
 
+def test_fuse_samples_uses_oldest_underlying_sample_timestamp() -> None:
+    arm = ArmSample(
+        shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        elbow=PoseLandmark(0.1, 0.2, 0.0, 0.9),
+        wrist=PoseLandmark(0.2, 0.4, 0.0, 0.9),
+        wrist_image_xy=(0.5, 0.5),
+        timestamp_ms=500,
+    )
+    hand = HandSample(
+        landmarks=[Landmark(0.5, 0.5, 0.0) for _ in range(21)],
+        handedness="Right",
+        confidence=0.9,
+        timestamp_ms=700,
+    )
+
+    sample = fuse_samples(arm=arm, hands=[hand], timestamp_ms=1000)
+
+    # Older of arm/hand timestamps is chosen so stale-result checks are conservative.
+    assert sample.timestamp_ms == 500
+
+
+def test_fuse_samples_uses_arm_timestamp_when_hand_missing() -> None:
+    arm = ArmSample(
+        shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        elbow=PoseLandmark(0.1, 0.2, 0.0, 0.9),
+        wrist=PoseLandmark(0.2, 0.4, 0.0, 0.9),
+        wrist_image_xy=(0.5, 0.5),
+        timestamp_ms=300,
+    )
+    sample = fuse_samples(arm=arm, hands=[], timestamp_ms=1000)
+    assert sample.timestamp_ms == 300
+
+
+def test_fuse_samples_uses_hand_timestamp_when_arm_missing() -> None:
+    hand = HandSample(
+        landmarks=[Landmark(0.5, 0.5, 0.0) for _ in range(21)],
+        handedness="Right",
+        confidence=0.9,
+        timestamp_ms=400,
+    )
+    sample = fuse_samples(arm=None, hands=[hand], timestamp_ms=1000)
+    assert sample.timestamp_ms == 400
+
+
+def test_fuse_samples_falls_back_to_loop_clock_when_no_samples() -> None:
+    sample = fuse_samples(arm=None, hands=[], timestamp_ms=1234)
+    assert sample.timestamp_ms == 1234
+
+
 def test_draw_overlay_does_not_modify_when_samples_are_none() -> None:
     frame = np.zeros((240, 320, 3), dtype=np.uint8)
     snapshot = frame.copy()

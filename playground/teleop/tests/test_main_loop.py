@@ -122,6 +122,34 @@ def test_sample_is_usable_false_when_stale() -> None:
     )
 
 
+def test_sample_is_usable_false_when_underlying_samples_are_stale() -> None:
+    # Regression: TeleopSample.timestamp_ms must reflect the underlying MediaPipe
+    # callback time, not the loop clock — otherwise stale-result detection is dead.
+    arm = ArmSample(
+        shoulder=PoseLandmark(0.0, 0.0, 0.0, 0.9),
+        elbow=PoseLandmark(0.0, 0.3, 0.0, 0.9),
+        wrist=PoseLandmark(0.0, 0.6, 0.0, 0.9),
+        wrist_image_xy=(0.5, 0.5),
+        timestamp_ms=500,
+    )
+    points = [Landmark(0.5, 0.65, 0.0) for _ in range(21)]
+    points[5] = Landmark(0.45, 0.55, 0.0)
+    points[17] = Landmark(0.55, 0.55, 0.0)
+    points[9] = Landmark(0.50, 0.45, 0.0)
+    points[4] = Landmark(0.42, 0.40, 0.0)
+    points[8] = Landmark(0.58, 0.40, 0.0)
+    hand = HandSample(points, handedness="Right", confidence=0.9, timestamp_ms=500)
+    stale_sample = TeleopSample(arm=arm, hand=hand, timestamp_ms=500)
+
+    assert not main.sample_is_usable(
+        stale_sample,
+        now_ms=1000,
+        min_pose_visibility=0.6,
+        min_hand_confidence=0.45,
+        stale_timeout_ms=200,
+    )
+
+
 def test_handle_neutral_capture_rejects_unusable_sample() -> None:
     mapper = TeleopMapper(mapping_config())
     target_filter = TargetFilter(safety_config(), baseline())

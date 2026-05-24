@@ -250,10 +250,11 @@ def fuse_samples(
 ) -> TeleopSample:
     if arm is None:
         chosen_hand = max(hands, key=lambda h: h.confidence, default=None)
-        return TeleopSample(arm=None, hand=chosen_hand, timestamp_ms=timestamp_ms)
+        fused_ts = chosen_hand.timestamp_ms if chosen_hand is not None else timestamp_ms
+        return TeleopSample(arm=None, hand=chosen_hand, timestamp_ms=fused_ts)
 
     if not hands:
-        return TeleopSample(arm=arm, hand=None, timestamp_ms=timestamp_ms)
+        return TeleopSample(arm=arm, hand=None, timestamp_ms=arm.timestamp_ms)
 
     wrist_x, wrist_y = arm.wrist_image_xy
 
@@ -262,7 +263,11 @@ def fuse_samples(
         return (wrist_landmark.x - wrist_x) ** 2 + (wrist_landmark.y - wrist_y) ** 2
 
     chosen_hand = min(hands, key=distance)
-    return TeleopSample(arm=arm, hand=chosen_hand, timestamp_ms=timestamp_ms)
+    # Use the older of the two underlying sample timestamps so the downstream
+    # stale-result check is conservative: if either modality is lagging, we
+    # report the lag instead of masking it with the loop clock.
+    fused_ts = min(arm.timestamp_ms, chosen_hand.timestamp_ms)
+    return TeleopSample(arm=arm, hand=chosen_hand, timestamp_ms=fused_ts)
 
 
 HAND_CONNECTIONS = tuple(
