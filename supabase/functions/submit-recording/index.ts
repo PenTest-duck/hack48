@@ -79,27 +79,42 @@ Deno.serve(async (req) => {
   });
   if (dbErr) return json({ error: `recordings: ${dbErr.message}` }, 500);
 
-  const { data: subData, error: subErr } = await admin
+  const { data: existingSubData, error: existingSubErr } = await admin
     .from("submissions")
-    .insert({
-      task_id: taskId,
-      collector_id: user.id, // equals profiles.id
-      storage_path: storagePath,
-      status: "pending",
-      metadata: {
-        recording_id: recordingId,
-        device_model: strOrNull(body.device_model),
-        duration_ms: numOrNull(body.duration_ms),
-        size_bytes: numOrNull(body.size_bytes),
-        gps: (numOrNull(body.gps_lat) !== null && numOrNull(body.gps_lon) !== null)
-          ? { lat: numOrNull(body.gps_lat), lon: numOrNull(body.gps_lon), accuracy_m: numOrNull(body.gps_accuracy_m) }
-          : null,
-        streams,
-      },
-    })
     .select("id")
-    .single();
-  if (subErr) return json({ error: `submissions: ${subErr.message}` }, 500);
+    .eq("task_id", taskId)
+    .eq("collector_id", user.id)
+    .eq("storage_path", storagePath)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (existingSubErr) return json({ error: `submissions lookup: ${existingSubErr.message}` }, 500);
+
+  let submissionId = existingSubData?.id ?? null;
+  if (!submissionId) {
+    const { data: subData, error: subErr } = await admin
+      .from("submissions")
+      .insert({
+        task_id: taskId,
+        collector_id: user.id, // equals profiles.id
+        storage_path: storagePath,
+        status: "pending",
+        metadata: {
+          recording_id: recordingId,
+          device_model: strOrNull(body.device_model),
+          duration_ms: numOrNull(body.duration_ms),
+          size_bytes: numOrNull(body.size_bytes),
+          gps: (numOrNull(body.gps_lat) !== null && numOrNull(body.gps_lon) !== null)
+            ? { lat: numOrNull(body.gps_lat), lon: numOrNull(body.gps_lon), accuracy_m: numOrNull(body.gps_accuracy_m) }
+            : null,
+          streams,
+        },
+      })
+      .select("id")
+      .single();
+    if (subErr) return json({ error: `submissions: ${subErr.message}` }, 500);
+    submissionId = subData?.id ?? null;
+  }
 
   const storagePathWithoutTrailingSlash = storagePath.replace(/\/+$/, "") || recordingId;
   const jobRows = analysisKinds.map((kind) => ({
@@ -113,20 +128,20 @@ Deno.serve(async (req) => {
   }));
   const { error: jobsErr } = await admin
     .from("recording_analysis_jobs")
-    .upsert(jobRows, { onConflict: "recording_id,kind" });
+    .upsert(jobRows, { onConflict: "recording_id,kind", ignoreDuplicates: true });
   if (jobsErr) return json({ error: `recording_analysis_jobs: ${jobsErr.message}` }, 500);
 
   const modalResult = await startModalAnalysis({
     recording_id: recordingId,
     task_id: taskId,
-    submission_id: subData?.id ?? null,
+    submission_id: submissionId,
     storage_path: storagePath,
   });
 
   return json({
     ok: true,
     recording_id: recordingId,
-    submission_id: subData?.id ?? null,
+    submission_id: submissionId,
     streams,
     analysis_started: modalResult.ok,
     analysis_error: modalResult.ok ? null : modalResult.error,
@@ -159,6 +174,7 @@ async function startModalAnalysis(payload: {
         "Content-Type": "application/json",
         "X-Hack48-Modal-Secret": modalSecret,
       },
+      signal: AbortSignal.timeout(10_000),
       body: JSON.stringify(payload),
     });
     const text = await res.text();
