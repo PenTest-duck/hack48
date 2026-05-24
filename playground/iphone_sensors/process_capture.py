@@ -879,8 +879,8 @@ def project_depth_points(
     cy = intr.cy * scale_y
 
     x = (xs - cx) * z / fx
-    y = (ys - cy) * z / fy
-    return np.column_stack([x, y, z])
+    y = -(ys - cy) * z / fy
+    return np.column_stack([x, y, -z])
 
 
 def make_world_point_cloud(

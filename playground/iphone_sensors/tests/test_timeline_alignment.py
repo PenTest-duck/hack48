@@ -43,6 +43,28 @@ class TimelineAlignmentTest(unittest.TestCase):
         np.testing.assert_allclose(timeline.pose_pos[1], [1.0, 0.0, 0.0])
         self.assertEqual(int(timeline.depth_idx[1]), 2)
 
+    def test_depth_unprojection_uses_arkit_camera_axes(self):
+        intr = process_capture.Intrinsics(
+            width=2,
+            height=2,
+            fx=1.0,
+            fy=1.0,
+            cx=0.0,
+            cy=0.0,
+        )
+        depth = np.ones((2, 2), dtype=np.float32)
+
+        points = process_capture.project_depth_points(
+            depth,
+            intr,
+            depth_w=2,
+            depth_h=2,
+            stride=1,
+        )
+
+        np.testing.assert_allclose(points[0], [0.0, -0.0, -1.0])
+        np.testing.assert_allclose(points[-1], [1.0, -1.0, -1.0])
+
 
 if __name__ == "__main__":
     unittest.main()
