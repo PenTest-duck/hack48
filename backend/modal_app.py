@@ -58,7 +58,12 @@ backend_secret = modal.Secret.from_name(SECRET_NAME)
 base_image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("git", "libegl1", "libgles2", "libglib2.0-0", "libgl1")
-    .pip_install("numpy>=2.2.0", "opencv-python-headless>=4.13.0.92")
+    .pip_install(
+        "httpx>=0.28.0",
+        "numpy>=2.2.0",
+        "opencv-python-headless>=4.13.0.92",
+        "pydantic>=2.7.0",
+    )
 )
 
 yolo_image = base_image.pip_install("ultralytics>=8.4.53").add_local_dir(
